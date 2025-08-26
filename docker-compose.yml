@@ -1,0 +1,54 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: saxbot-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./redis.conf:/usr/local/etc/redis/redis.conf
+      - redis_data:/data
+    command: redis-server /usr/local/etc/redis/redis.conf
+    networks:
+      - saxbot-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  saxbot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: saxbot-app
+    restart: unless-stopped
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - ALLOWED_CHATS=${ALLOWED_CHATS}
+      - KATYA_ID=${KATYA_ID}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - ADMINS=${ADMINS}
+      - YANDEX_LINK=${YANDEX_LINK}
+      - YOUTUBE_LINK=${YOUTUBE_LINK}
+      - VK_LINK=${VK_LINK}
+      - DONATE_LINK=${DONATE_LINK}
+      - BOOST_LINK=${BOOST_LINK}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - saxbot-network
+    volumes:
+      - ./logs:/app/logs
+    command: ${SAXBOT_ARGS:-./saxbot}
+
+networks:
+  saxbot-network:
+    driver: bridge
+
+volumes:
+  redis_data:
+    driver: local

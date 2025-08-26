@@ -1,0 +1,47 @@
+# Игнорируем файлы разработки
+.git
+.gitignore
+README.md
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Игнорируем скомпилированные бинарники
+saxbot
+*.exe
+
+# Игнорируем данные Redis (они должны быть в volume)
+redis_data/
+dump.rdb
+appendonly.aof
+redis.local.conf
+
+# Игнорируем логи
+logs/
+*.log
+
+# Игнорируем временные файлы
+*.tmp
+*.temp
+*~
+.DS_Store
+Thumbs.db
+
+# Игнорируем IDE файлы
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Игнорируем файлы окружения
+.env
+.env.local
+.env.production
+
+# Игнорируем тестовые файлы и coverage
+*_test.go
+coverage.out
+coverage.html
+
+# Игнорируем vendor (если используется)
+vendor/
