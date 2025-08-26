@@ -235,6 +235,14 @@ func main() {
 				} else {
 					return c.Reply("Кого мутить?")
 				}
+			case "Размут", "размут", "/unmute":
+				if isReply {
+					replyToUserData.Status = "active"
+					redisClient.SetUser(replyToID, replyToUserData)
+					return c.Send(fmt.Sprintf("@%s размучен. А то че как воды в рот набрал", replyToUserData.Username))
+				} else {
+					return c.Reply("Кого размутить?")
+				}
 			}
 		}
 		if isReply {
