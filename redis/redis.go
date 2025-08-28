@@ -90,43 +90,88 @@ func GetTTL(key string) (time.Duration, error) {
 	return Client.TTL(ctx, key).Result()
 }
 
-// GetUser получает данные пользователя из Redis
+// GetUser получает данные пользователя из Redis (сначала из памяти, затем с диска)
 func GetUser(userID int64) (*UserData, error) {
+	// Сначала ищем в оперативной памяти (с TTL)
 	key := fmt.Sprintf("user:%d", userID)
 	val, err := Client.Get(ctx, key).Result()
-	if err == redis.Nil {
-		// Пользователь не найден, создаем нового с нулевыми значениями
-		admins := os.Getenv("ADMINS")
-		adminInts := make([]int, len(strings.Split(admins, ",")))
-		for i, s := range strings.Split(admins, ",") {
-			adminInts[i], _ = strconv.Atoi(s)
+	if err == nil {
+		// Данные найдены в памяти
+		var userData UserData
+		err = json.Unmarshal([]byte(val), &userData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal user data from memory: %v", err)
 		}
-		if slices.Contains(adminInts, int(userID)) {
-			return &UserData{Username: "", IsAdmin: true, Reputation: 0, Warns: 0, Status: "active"}, nil
-		}
-		return &UserData{Username: "", IsAdmin: false, Reputation: 0, Warns: 0, Status: "active"}, nil
+		return &userData, nil
 	}
-	if err != nil {
+
+	if err != redis.Nil {
 		return nil, err
 	}
 
-	var userData UserData
-	err = json.Unmarshal([]byte(val), &userData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal user data: %v", err)
+	// Если не найдены в памяти, ищем на диске (персистентные данные)
+	persistentKey := fmt.Sprintf("user_persistent:%d", userID)
+	val, err = Client.Get(ctx, persistentKey).Result()
+	if err == nil {
+		// Данные найдены на диске, загружаем в память с TTL
+		var userData UserData
+		err = json.Unmarshal([]byte(val), &userData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal user data from disk: %v", err)
+		}
+
+		// Сохраняем в память с TTL для быстрого доступа
+		SetUser(userID, &userData)
+		return &userData, nil
 	}
 
-	return &userData, nil
+	if err != redis.Nil {
+		return nil, err
+	}
+
+	// Пользователь не найден ни в памяти, ни на диске - создаем нового
+	admins := os.Getenv("ADMINS")
+	adminInts := make([]int, len(strings.Split(admins, ",")))
+	for i, s := range strings.Split(admins, ",") {
+		adminInts[i], _ = strconv.Atoi(s)
+	}
+
+	var userData *UserData
+	if slices.Contains(adminInts, int(userID)) {
+		log.Printf("userID: %d is admin", userID)
+		userData = &UserData{Username: "", IsAdmin: true, Reputation: 0, Warns: 0, Status: "active"}
+	} else {
+		log.Printf("userID: %d is not admin", userID)
+		userData = &UserData{Username: "", IsAdmin: false, Reputation: 0, Warns: 0, Status: "active"}
+	}
+
+	// Сохраняем нового пользователя и в память, и на диск
+	SetUser(userID, userData)
+	SetUserPersistent(userID, userData)
+
+	return userData, nil
 }
 
-// SetUser сохраняет данные пользователя в Redis
+// SetUser сохраняет данные пользователя в Redis с TTL 30 минут
 func SetUser(userID int64, userData *UserData) error {
 	key := fmt.Sprintf("user:%d", userID)
 	data, err := json.Marshal(userData)
 	if err != nil {
 		return fmt.Errorf("failed to marshal user data: %v", err)
 	}
-	return Client.Set(ctx, key, data, 0).Err() // 0 = без истечения срока
+	// Устанавливаем TTL 30 минут для хранения в оперативной памяти
+	return Client.Set(ctx, key, data, 30*time.Minute).Err()
+}
+
+// SetUserPersistent сохраняет данные пользователя в Redis без TTL (для сохранения на диск)
+func SetUserPersistent(userID int64, userData *UserData) error {
+	key := fmt.Sprintf("user_persistent:%d", userID)
+	data, err := json.Marshal(userData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal user data: %v", err)
+	}
+	// Сохраняем без TTL для персистентности на диске
+	return Client.Set(ctx, key, data, 0).Err()
 }
 
 // UpdateUserReputation обновляет репутацию пользователя
@@ -136,7 +181,13 @@ func UpdateUserReputation(userID int64, delta int) error {
 		return err
 	}
 	userData.Reputation += delta
-	return SetUser(userID, userData)
+
+	// Сохраняем и в память (с TTL), и на диск (персистентно)
+	err = SetUser(userID, userData)
+	if err != nil {
+		return err
+	}
+	return SetUserPersistent(userID, userData)
 }
 
 // UpdateUserWarns обновляет количество предупреждений пользователя
@@ -149,7 +200,13 @@ func UpdateUserWarns(userID int64, delta int) error {
 	if userData.Warns < 0 {
 		userData.Warns = 0
 	}
-	return SetUser(userID, userData)
+
+	// Сохраняем и в память (с TTL), и на диск (персистентно)
+	err = SetUser(userID, userData)
+	if err != nil {
+		return err
+	}
+	return SetUserPersistent(userID, userData)
 }
 
 // FlushAll очищает всю базу данных Redis
@@ -176,4 +233,56 @@ func GetDatabaseInfo() (map[string]string, error) {
 	result["redis_info"] = info
 
 	return result, nil
+}
+
+// CleanupExpiredKeys принудительно удаляет истекшие ключи для освобождения памяти
+func CleanupExpiredKeys() error {
+	// Получаем все ключи с TTL
+	keys, err := Client.Keys(ctx, "user:*").Result()
+	if err != nil {
+		return err
+	}
+
+	expiredCount := 0
+	for _, key := range keys {
+		ttl, err := Client.TTL(ctx, key).Result()
+		if err != nil {
+			continue
+		}
+		// Если TTL истек (отрицательное значение), удаляем ключ
+		if ttl < 0 {
+			Client.Del(ctx, key)
+			expiredCount++
+		}
+	}
+
+	log.Printf("Cleanup completed: removed %d expired keys", expiredCount)
+	return nil
+}
+
+// GetMemoryStats получает статистику использования памяти
+func GetMemoryStats() (map[string]interface{}, error) {
+	info, err := Client.Info(ctx, "memory").Result()
+	if err != nil {
+		return nil, err
+	}
+
+	stats := make(map[string]interface{})
+	lines := strings.Split(info, "\r\n")
+	for _, line := range lines {
+		if strings.Contains(line, ":") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) == 2 {
+				stats[parts[0]] = parts[1]
+			}
+		}
+	}
+
+	// Добавляем количество ключей разных типов
+	memoryKeys, _ := Client.Keys(ctx, "user:*").Result()
+	persistentKeys, _ := Client.Keys(ctx, "user_persistent:*").Result()
+	stats["memory_keys_count"] = len(memoryKeys)
+	stats["persistent_keys_count"] = len(persistentKeys)
+
+	return stats, nil
 }
