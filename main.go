@@ -218,6 +218,13 @@ func main() {
 		}
 	}
 
+	// Обновляем админские статусы всех существующих пользователей при запуске
+	log.Printf("Обновляем админские права пользователей из переменной окружения ADMINS...")
+	err = redisClient.RefreshAllUsersAdminStatus()
+	if err != nil {
+		log.Printf("Предупреждение: не удалось обновить админские права: %v", err)
+	}
+
 	pref := tele.Settings{
 		Token:  os.Getenv("BOT_TOKEN"),
 		Poller: &tele.LongPoller{Timeout: 10 * time.Second},
@@ -349,10 +356,10 @@ func main() {
 
 		if userID == katyaIDInt && !katyaFlag {
 			katyaFlag = true
-			return replyMessage(c, "🚨ВНИМАНИЕ! АЛАРМ!🚨 КАТЕНЬКА В ЧАТЕ!💀 ЭТО НЕ УЧЕБНАЯ ТРЕВОГА, ПОВТОРЯЮ, ЭТО НЕ УЧЕБНАЯ ТРЕВОГА!⛔", messageThreadID)
+			return replyMessage(c, "🚨ВНИМАНИЕ! АЛАРМ!🚨 КАТЕНЬКА В ЧАТЕ!💀 ЭТО НЕ УЧЕБНАЯ ТРЕВОГА! ПОВТОРЯЮ, ЭТО НЕ УЧЕБНАЯ ТРЕВОГА!⛔\n❗ВСЕМ ОБЯЗАТЕЛЬНО СЛУШАТЬСЯ КАТЕНЬКУ❗", messageThreadID)
 		}
 
-		if userData.IsAdmin {
+		if userData.IsAdmin || userID == katyaIDInt {
 			switch c.Message().Text {
 			case "Предупреждение", "предупреждение":
 				if isReply {
@@ -369,7 +376,7 @@ func main() {
 					return replyToOriginalMessage(c, "Извинись дон. Скажи, что ты был не прав дон. Или имей в виду — на всю оставшуюся жизнь у нас с тобой вражда", messageThreadID)
 				}
 			case "Пошел нахуй", "пошел нахуй", "Пошла нахуй", "пошла нахуй", "/ban":
-				if isReply {
+				if isReply && userID != katyaIDInt {
 					if replyToUserData.IsAdmin {
 						return replyMessage(c, "Ты не можешь банить других админов, соси писос", messageThreadID)
 					}
@@ -382,10 +389,13 @@ func main() {
 					redisClient.SetUserPersistent(replyToID, replyToUserData)
 					return sendMessage(c, fmt.Sprintf("@%s идет нахуй из чатика", user.Username), messageThreadID)
 				} else {
+					if userID == katyaIDInt {
+						return replyMessage(c, "Катенька, зачиллься, остынь, успокойся, не надо так", messageThreadID)
+					}
 					return replyMessage(c, "Банхаммер готов. Кого послать нахуй?", messageThreadID)
 				}
 			case "Мут", "мут", "Ебало завали", "ебало завали", "/mute":
-				if isReply {
+				if isReply && userID != katyaIDInt {
 					if replyToUserData.IsAdmin {
 						return replyMessage(c, "Ты не можешь мутить других админов, соси писос", messageThreadID)
 					}
@@ -400,6 +410,9 @@ func main() {
 					}()
 					return sendMessage(c, fmt.Sprintf("@%s помолчит полчасика и подумает о своем поведении", replyToUserData.Username), messageThreadID)
 				} else {
+					if userID == katyaIDInt {
+						return replyMessage(c, "Катенька, зачиллься, остынь, успокойся, не надо так", messageThreadID)
+					}
 					return replyMessage(c, "Кого мутить?", messageThreadID)
 				}
 			case "Размут", "размут", "/unmute":
@@ -412,7 +425,7 @@ func main() {
 					return replyMessage(c, "Кого размутить?", messageThreadID)
 				}
 			case "Нацик":
-				if isReply {
+				if isReply && userID != katyaIDInt {
 					if replyToUserData.IsAdmin {
 						return replyMessage(c, "Ты не можешь банить других админов, соси писос", messageThreadID)
 					}
@@ -427,6 +440,9 @@ func main() {
 					redisClient.SetUserPersistent(replyToID, replyToUserData)
 					return sendMessage(c, fmt.Sprintf("@%s идет нахуй из чатика", user.Username), messageThreadID)
 				} else {
+					if userID == katyaIDInt {
+						return replyMessage(c, "Катенька, зачиллься, остынь, успокойся, не надо так", messageThreadID)
+					}
 					return replyMessage(c, "Кому яйца жмут?", messageThreadID)
 				}
 			}

@@ -102,6 +102,14 @@ func GetUser(userID int64) (*UserData, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal user data from memory: %v", err)
 		}
+
+		// Проверяем и обновляем админский статус
+		if UpdateUserAdminStatus(userID, &userData) {
+			// Если статус изменился, сохраняем обновленные данные
+			SetUser(userID, &userData)
+			SetUserPersistent(userID, &userData)
+		}
+
 		return &userData, nil
 	}
 
@@ -120,8 +128,17 @@ func GetUser(userID int64) (*UserData, error) {
 			return nil, fmt.Errorf("failed to unmarshal user data from disk: %v", err)
 		}
 
+		// Проверяем и обновляем админский статус
+		statusChanged := UpdateUserAdminStatus(userID, &userData)
+
 		// Сохраняем в память с TTL для быстрого доступа
 		SetUser(userID, &userData)
+
+		// Если статус изменился, также обновляем персистентные данные
+		if statusChanged {
+			SetUserPersistent(userID, &userData)
+		}
+
 		return &userData, nil
 	}
 
@@ -131,9 +148,21 @@ func GetUser(userID int64) (*UserData, error) {
 
 	// Пользователь не найден ни в памяти, ни на диске - создаем нового
 	admins := os.Getenv("ADMINS")
-	adminInts := make([]int, len(strings.Split(admins, ",")))
-	for i, s := range strings.Split(admins, ",") {
-		adminInts[i], _ = strconv.Atoi(s)
+	if admins == "" {
+		log.Printf("ADMINS environment variable is empty")
+	}
+
+	adminInts := make([]int, 0)
+	for _, s := range strings.Split(admins, ",") {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		if adminInt, err := strconv.Atoi(s); err == nil {
+			adminInts = append(adminInts, adminInt)
+		} else {
+			log.Printf("Failed to parse admin ID '%s': %v", s, err)
+		}
 	}
 
 	var userData *UserData
@@ -207,6 +236,94 @@ func UpdateUserWarns(userID int64, delta int) error {
 		return err
 	}
 	return SetUserPersistent(userID, userData)
+}
+
+// UpdateUserAdminStatus обновляет админский статус пользователя на основе переменной окружения ADMINS
+func UpdateUserAdminStatus(userID int64, userData *UserData) bool {
+	admins := os.Getenv("ADMINS")
+	if admins == "" {
+		return false
+	}
+
+	adminInts := make([]int, 0)
+	for _, s := range strings.Split(admins, ",") {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		if adminInt, err := strconv.Atoi(s); err == nil {
+			adminInts = append(adminInts, adminInt)
+		}
+	}
+
+	newAdminStatus := slices.Contains(adminInts, int(userID))
+	if userData.IsAdmin != newAdminStatus {
+		log.Printf("Updating admin status for user %d: %t -> %t", userID, userData.IsAdmin, newAdminStatus)
+		userData.IsAdmin = newAdminStatus
+		return true // Статус изменился
+	}
+	return false // Статус не изменился
+}
+
+// RefreshAllUsersAdminStatus обновляет админский статус для всех существующих пользователей
+func RefreshAllUsersAdminStatus() error {
+	log.Printf("Starting admin status refresh for all users...")
+
+	// Получаем все ключи пользователей (персистентные)
+	keys, err := Client.Keys(ctx, "user_persistent:*").Result()
+	if err != nil {
+		return fmt.Errorf("failed to get user keys: %v", err)
+	}
+
+	updatedCount := 0
+	for _, key := range keys {
+		// Извлекаем userID из ключа (формат: user_persistent:123456)
+		parts := strings.Split(key, ":")
+		if len(parts) != 2 {
+			continue
+		}
+
+		userID, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil {
+			log.Printf("Failed to parse userID from key %s: %v", key, err)
+			continue
+		}
+
+		// Получаем данные пользователя
+		val, err := Client.Get(ctx, key).Result()
+		if err != nil {
+			log.Printf("Failed to get user data for %d: %v", userID, err)
+			continue
+		}
+
+		var userData UserData
+		err = json.Unmarshal([]byte(val), &userData)
+		if err != nil {
+			log.Printf("Failed to unmarshal user data for %d: %v", userID, err)
+			continue
+		}
+
+		// Обновляем админский статус
+		if UpdateUserAdminStatus(userID, &userData) {
+			// Сохраняем обновленные данные
+			err = SetUserPersistent(userID, &userData)
+			if err != nil {
+				log.Printf("Failed to save updated user data for %d: %v", userID, err)
+				continue
+			}
+
+			// Также обновляем в памяти, если пользователь там есть
+			memKey := fmt.Sprintf("user:%d", userID)
+			if Client.Exists(ctx, memKey).Val() > 0 {
+				SetUser(userID, &userData)
+			}
+
+			updatedCount++
+		}
+	}
+
+	log.Printf("Admin status refresh completed. Updated %d users out of %d total.", updatedCount, len(keys))
+	return nil
 }
 
 // FlushAll очищает всю базу данных Redis
