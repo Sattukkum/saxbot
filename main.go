@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"saxbot/activities"
+	"saxbot/admins"
 	redisClient "saxbot/redis"
 	textcases "saxbot/text_cases"
 	"slices"
@@ -16,8 +18,11 @@ import (
 	tele "gopkg.in/telebot.v4"
 )
 
-var katyaFlag = false
+var lastKatyaMessage time.Time
 var photoFlag = false
+var todayQuiz activities.QuoteQuiz
+var quizRunning = false
+var quizAlreadyWas = false
 
 // sendMessage отправляет сообщение с учетом топика (если есть)
 func sendMessage(c tele.Context, text string, threadID int) error {
@@ -236,17 +241,77 @@ func main() {
 		return
 	}
 
-	go func() {
-		for {
-			time.Sleep(1 * time.Hour)
-			katyaFlag = false
-		}
-	}()
+	quizChatID, _ := strconv.ParseInt(os.Getenv("QUIZ_CHAT"), 10, 64)
 
 	go func() {
 		for {
 			time.Sleep(30 * time.Second)
 			photoFlag = false
+		}
+	}()
+
+	go func() {
+		var lastQuizDate time.Time
+		// Используем московское время (UTC+3)
+		moscowTZ := time.FixedZone("Moscow", 3*60*60)
+
+		// При запуске пытаемся загрузить время квиза из Redis
+		if savedTime, err := redisClient.LoadQuizTime(); err == nil {
+			todayQuiz.QuizTime = savedTime.In(moscowTZ)
+			today := time.Date(savedTime.Year(), savedTime.Month(), savedTime.Day(), 0, 0, 0, 0, moscowTZ)
+			lastQuizDate = today
+			log.Printf("Загружено время квиза из Redis: %s", todayQuiz.QuizTime.Format("15:04"))
+		} else {
+			log.Printf("Не удалось загрузить время квиза из Redis: %v", err)
+		}
+
+		// При запуске загружаем флаг "квиз уже был"
+		if wasQuiz, err := redisClient.GetQuizAlreadyWas(); err == nil {
+			quizAlreadyWas = wasQuiz
+			if wasQuiz {
+				log.Printf("Квиз сегодня уже был проведен")
+			}
+		} else {
+			log.Printf("Не удалось загрузить флаг квиза из Redis: %v", err)
+		}
+
+		quizRunning = false
+
+		for {
+			now := time.Now().In(moscowTZ)
+			today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, moscowTZ)
+
+			// Проверяем, нужно ли установить новое время квиза (каждое утро)
+			if !today.Equal(lastQuizDate) {
+				// Очищаем флаг "квиз уже был" перед установкой нового времени
+				if err := redisClient.ClearQuizAlreadyWas(); err != nil {
+					log.Printf("Ошибка очистки флага квиза в Redis: %v", err)
+				} else {
+					log.Printf("Очищен флаг 'квиз уже был' для нового дня")
+				}
+				quizAlreadyWas = false
+
+				todayQuiz = activities.GetTodayQuiz()
+				lastQuizDate = today
+
+				// Сохраняем новое время квиза в Redis
+				if err := redisClient.SaveQuizTime(todayQuiz.QuizTime); err != nil {
+					log.Printf("Ошибка сохранения времени квиза в Redis: %v", err)
+				} else {
+					log.Printf("Установлено и сохранено новое время квиза на сегодня: %s", todayQuiz.QuizTime.Format("15:04"))
+				}
+			}
+
+			if now.After(todayQuiz.QuizTime) && !quizAlreadyWas && !quizRunning {
+				admins.RemovePref(bot, &tele.Chat{ID: quizChatID})
+				quizRunning = true
+				bot.Send(tele.ChatID(quizChatID), "Интерактив! Угадай песню по цитате! Кто первый даст правильный ответ, получит приз!\nОбращаю внимание, что название песни нужно писать без ошибок!")
+				bot.Send(tele.ChatID(quizChatID), fmt.Sprintf("Сегодняшняя цитата:\n%s", todayQuiz.Quote))
+
+			}
+
+			// Проверяем каждую минуту
+			time.Sleep(1 * time.Minute)
 		}
 	}()
 
@@ -284,6 +349,8 @@ func main() {
 
 	// Парсим ID Кати
 	katyaIDInt, _ := strconv.ParseInt(strings.TrimSpace(katyaID), 10, 64)
+
+	lastKatyaMessage = time.Now().Add(-30 * time.Minute)
 
 	bot.Handle(tele.OnText, func(c tele.Context) error {
 		log.Printf("Received message: '%s' from user %d in chat %d", c.Message().Text, c.Message().Sender.ID, c.Message().Chat.ID)
@@ -354,19 +421,27 @@ func main() {
 			}
 		}
 
-		if userID == katyaIDInt && !katyaFlag {
-			katyaFlag = true
-			return replyMessage(c, "🚨ВНИМАНИЕ! АЛАРМ!🚨 КАТЕНЬКА В ЧАТЕ!💀 ЭТО НЕ УЧЕБНАЯ ТРЕВОГА! ПОВТОРЯЮ, ЭТО НЕ УЧЕБНАЯ ТРЕВОГА!⛔\n❗ВСЕМ ОБЯЗАТЕЛЬНО СЛУШАТЬСЯ КАТЕНЬКУ❗", messageThreadID)
+		if userID == katyaIDInt {
+			if time.Since(lastKatyaMessage) > 30*time.Minute {
+				lastKatyaMessage = time.Now()
+				return replyMessage(c, "🚨ВНИМАНИЕ! АЛАРМ!🚨 КАТЕНЬКА В ЧАТЕ!💀 ЭТО НЕ УЧЕБНАЯ ТРЕВОГА! ПОВТОРЯЮ, ЭТО НЕ УЧЕБНАЯ ТРЕВОГА!⛔\n❗ВСЕМ ОБЯЗАТЕЛЬНО СЛУШАТЬСЯ КАТЕНЬКУ❗", messageThreadID)
+			}
+			lastKatyaMessage = time.Now()
 		}
 
-		if userData.IsAdmin || userID == katyaIDInt {
+		if userData.IsAdmin || userID == katyaIDInt || userData.IsWinner {
 			switch c.Message().Text {
 			case "Предупреждение", "предупреждение":
 				if isReply {
 					replyToUserData.Warns++
 					redisClient.SetUser(replyToID, replyToUserData)
 					redisClient.SetUserPersistent(replyToID, replyToUserData)
-					text := textcases.GetWarnCase(c.Message().ReplyTo.Sender.Username)
+					var text string
+					if strings.EqualFold(c.Message().ReplyTo.Text, "Лена") {
+						text = textcases.GetWarnCase(c.Message().ReplyTo.Sender.Username, true)
+					} else {
+						text = textcases.GetWarnCase(c.Message().ReplyTo.Sender.Username, false)
+					}
 					return replyToOriginalMessage(c, text, messageThreadID)
 				} else {
 					return replyMessage(c, "Ты кого предупреждаешь?", messageThreadID)
@@ -376,17 +451,14 @@ func main() {
 					return replyToOriginalMessage(c, "Извинись дон. Скажи, что ты был не прав дон. Или имей в виду — на всю оставшуюся жизнь у нас с тобой вражда", messageThreadID)
 				}
 			case "Пошел нахуй", "пошел нахуй", "Пошла нахуй", "пошла нахуй", "/ban":
-				if isReply && userID != katyaIDInt {
+				if isReply && userID != katyaIDInt && (userData.IsAdmin || !userData.IsWinner) {
 					if replyToUserData.IsAdmin {
 						return replyMessage(c, "Ты не можешь банить других админов, соси писос", messageThreadID)
 					}
 					user := c.Message().ReplyTo.Sender
 					chatMember := &tele.ChatMember{User: user, Role: tele.Member}
-					bot.Ban(c.Message().Chat, chatMember)
+					admins.BanUser(bot, c.Message().Chat, chatMember)
 					bot.Delete(c.Message().ReplyTo)
-					replyToUserData.Status = "banned"
-					redisClient.SetUser(replyToID, replyToUserData)
-					redisClient.SetUserPersistent(replyToID, replyToUserData)
 					return sendMessage(c, fmt.Sprintf("@%s идет нахуй из чатика", user.Username), messageThreadID)
 				} else {
 					if userID == katyaIDInt {
@@ -395,19 +467,15 @@ func main() {
 					return replyMessage(c, "Банхаммер готов. Кого послать нахуй?", messageThreadID)
 				}
 			case "Мут", "мут", "Ебало завали", "ебало завали", "/mute":
-				if isReply && userID != katyaIDInt {
+				if isReply && userID != katyaIDInt && (userData.IsAdmin || !userData.IsWinner) {
 					if replyToUserData.IsAdmin {
 						return replyMessage(c, "Ты не можешь мутить других админов, соси писос", messageThreadID)
 					}
-					replyToUserData.Status = "muted"
-					redisClient.SetUser(replyToID, replyToUserData)
-					redisClient.SetUserPersistent(replyToID, replyToUserData)
-					go func() {
-						time.Sleep(30 * time.Minute)
-						replyToUserData.Status = "active"
-						redisClient.SetUser(replyToID, replyToUserData)
-						redisClient.SetUserPersistent(replyToID, replyToUserData)
-					}()
+					user := c.Message().ReplyTo.Sender
+					chatMember := &tele.ChatMember{User: user, Role: tele.Member, Rights: tele.Rights{
+						CanSendMessages: false,
+					}}
+					admins.MuteUser(bot, c.Chat(), chatMember)
 					return sendMessage(c, fmt.Sprintf("@%s помолчит полчасика и подумает о своем поведении", replyToUserData.Username), messageThreadID)
 				} else {
 					if userID == katyaIDInt {
@@ -417,15 +485,16 @@ func main() {
 				}
 			case "Размут", "размут", "/unmute":
 				if isReply {
-					replyToUserData.Status = "active"
-					redisClient.SetUser(replyToID, replyToUserData)
-					redisClient.SetUserPersistent(replyToID, replyToUserData)
+					chatMember := &tele.ChatMember{User: c.Message().ReplyTo.Sender, Role: tele.Member, Rights: tele.Rights{
+						CanSendMessages: true,
+					}}
+					admins.UnmuteUser(bot, c.Chat(), chatMember)
 					return sendMessage(c, fmt.Sprintf("@%s размучен. А то че как воды в рот набрал", replyToUserData.Username), messageThreadID)
 				} else {
 					return replyMessage(c, "Кого размутить?", messageThreadID)
 				}
 			case "Нацик":
-				if isReply && userID != katyaIDInt {
+				if isReply && userID != katyaIDInt && (userData.IsAdmin || !userData.IsWinner) {
 					if replyToUserData.IsAdmin {
 						return replyMessage(c, "Ты не можешь банить других админов, соси писос", messageThreadID)
 					}
@@ -433,11 +502,8 @@ func main() {
 					replyToOriginalMessage(c, fmt.Sprintf("@%s, скажи ауфидерзейн своим нацистским яйцам!", user.Username), messageThreadID)
 					time.Sleep(1 * time.Second)
 					chatMember := &tele.ChatMember{User: user, Role: tele.Member}
-					bot.Ban(c.Message().Chat, chatMember)
+					admins.BanUser(bot, c.Message().Chat, chatMember)
 					bot.Delete(c.Message().ReplyTo)
-					replyToUserData.Status = "banned"
-					redisClient.SetUser(replyToID, replyToUserData)
-					redisClient.SetUserPersistent(replyToID, replyToUserData)
 					return sendMessage(c, fmt.Sprintf("@%s идет нахуй из чатика", user.Username), messageThreadID)
 				} else {
 					if userID == katyaIDInt {
@@ -453,29 +519,10 @@ func main() {
 			return sendMessage(c, text, messageThreadID)
 		case "Админ", "админ", "/report":
 			if isReply {
-				return replyToOriginalMessage(c, fmt.Sprintf("@%s вызывает админов. В чатике дичь\n@fatiurs, @puwyb, @murmuIlya, @OlegIksha", userData.Username), messageThreadID)
+				return replyToOriginalMessage(c, fmt.Sprintf("@%s вызывает админов. В чатике дичь\n@fatiurs, @puwyb, @murmuIlya, @RavenMxL", userData.Username), messageThreadID)
 			} else {
-				return sendMessage(c, fmt.Sprintf("@%s вызывает админов. В чатике дичь\n@fatiurs, @puwyb, @murmuIlya, @OlegIksha", userData.Username), messageThreadID)
+				return sendMessage(c, fmt.Sprintf("@%s вызывает админов. В чатике дичь\n@fatiurs, @puwyb, @murmuIlya, @RavenMxL", userData.Username), messageThreadID)
 			}
-			/*
-				case "Репа", "репа", "/rep":
-					switch {
-					case userData.Reputation == 0:
-						return replyMessage(c, "У тебя нет репутации. Ты новенький, но скоро нежить о тебе услышит", messageThreadID)
-					case userData.Reputation > 0 && userData.Reputation < 10:
-						return replyMessage(c, fmt.Sprintf("У тебя %d репутации. Ты уже начал свой путь по кладбищу", userData.Reputation), messageThreadID)
-					case userData.Reputation >= 10 && userData.Reputation < 100:
-						return replyMessage(c, fmt.Sprintf("У тебя %d репутации. Ты уважаемый член кладбищенской братии", userData.Reputation), messageThreadID)
-					case userData.Reputation >= 100:
-						return replyMessage(c, fmt.Sprintf("У тебя %d репутации. Тобой гордится вся нежить!", userData.Reputation), messageThreadID)
-					case userData.Reputation < 0 && userData.Reputation > -10:
-						return replyMessage(c, fmt.Sprintf("У тебя %d репутации. Нежить относится к тебе с подозрением, но ты еще можешь исправить ситуацию", userData.Reputation), messageThreadID)
-					case userData.Reputation <= -10 && userData.Reputation > -100:
-						return replyMessage(c, fmt.Sprintf("У тебя %d репутации. Таких на нашем кладбище не уважают. Срочно делай что-нибудь", userData.Reputation), messageThreadID)
-					case userData.Reputation <= -100:
-						return replyMessage(c, fmt.Sprintf("У тебя %d репутации. Ты вообще не нежить, ты либерал простой", userData.Reputation), messageThreadID)
-					}
-			*/
 		case "Преды", "преды", "/warns":
 			switch {
 			case userData.Warns == 0:
@@ -488,6 +535,19 @@ func main() {
 				return replyMessage(c, fmt.Sprintf("У тебя %d предупреждений. Я от тебя в светлом ахуе. Ты когда-нибудь перестанешь?", userData.Warns), messageThreadID)
 			case userData.Warns >= 1000:
 				return replyMessage(c, fmt.Sprintf("У тебя %d предупреждений. Ты постиг нирвану и вышел за пределы сознания. Тебя больше ничто не остановит", userData.Warns), messageThreadID)
+			}
+		}
+		if quizRunning {
+			if strings.EqualFold(c.Message().Text, todayQuiz.SongName) {
+				quizRunning = false
+				winnerTitle := textcases.GetRandomTitle()
+				replyMessage(c, fmt.Sprintf("Правильно! Песня: %s", todayQuiz.SongName), messageThreadID)
+				time.Sleep(100 * time.Millisecond)
+				replyMessage(c, fmt.Sprintf("Поздравляем, %s! Ты победил и получил титул %s до следующего квиза!", c.Message().Sender.Username, winnerTitle), messageThreadID)
+				chatMember := &tele.ChatMember{User: c.Message().Sender, Role: tele.Member}
+				admins.SetPref(bot, c.Chat(), chatMember, winnerTitle)
+				quizAlreadyWas = true
+				redisClient.SetQuizAlreadyWas()
 			}
 		}
 		return nil
@@ -545,6 +605,7 @@ func main() {
 
 		if userID == katyaIDInt && !photoFlag {
 			photoFlag = true
+			lastKatyaMessage = time.Now()
 			return replyMessage(c, "💖 СРОЧНО ВСЕМ ЛЮБОВАТЬСЯ НОВОЙ ФОТОЧКОЙ КАТЕНЬКИ! 💖\n😠 ЗА НЕГАТИВНЫЕ РЕАКЦИИ ПОЛУЧИТЕ ПРЕДУПРЕЖДЕНИЕ! 😠", messageThreadID)
 		}
 

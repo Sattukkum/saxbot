@@ -168,10 +168,10 @@ func GetUser(userID int64) (*UserData, error) {
 	var userData *UserData
 	if slices.Contains(adminInts, int(userID)) {
 		log.Printf("userID: %d is admin", userID)
-		userData = &UserData{Username: "", IsAdmin: true, Reputation: 0, Warns: 0, Status: "active"}
+		userData = &UserData{Username: "", IsAdmin: true, Warns: 0, Status: "active", IsWinner: false}
 	} else {
 		log.Printf("userID: %d is not admin", userID)
-		userData = &UserData{Username: "", IsAdmin: false, Reputation: 0, Warns: 0, Status: "active"}
+		userData = &UserData{Username: "", IsAdmin: false, Warns: 0, Status: "active", IsWinner: false}
 	}
 
 	// Сохраняем нового пользователя и в память, и на диск
@@ -201,22 +201,6 @@ func SetUserPersistent(userID int64, userData *UserData) error {
 	}
 	// Сохраняем без TTL для персистентности на диске
 	return Client.Set(ctx, key, data, 0).Err()
-}
-
-// UpdateUserReputation обновляет репутацию пользователя
-func UpdateUserReputation(userID int64, delta int) error {
-	userData, err := GetUser(userID)
-	if err != nil {
-		return err
-	}
-	userData.Reputation += delta
-
-	// Сохраняем и в память (с TTL), и на диск (персистентно)
-	err = SetUser(userID, userData)
-	if err != nil {
-		return err
-	}
-	return SetUserPersistent(userID, userData)
 }
 
 // UpdateUserWarns обновляет количество предупреждений пользователя
@@ -336,6 +320,33 @@ func GetAllKeys() ([]string, error) {
 	return Client.Keys(ctx, "*").Result()
 }
 
+// GetAllUsers получает всех пользователей из базы данных
+func GetAllUsers() (map[int64]*UserData, error) {
+	keys, err := Client.Keys(ctx, "user:*").Result()
+	if err != nil {
+		return nil, err
+	}
+
+	users := make(map[int64]*UserData)
+	for _, key := range keys {
+		// Извлекаем userID из ключа "user:123"
+		userIDStr := strings.TrimPrefix(key, "user:")
+		userID, err := strconv.ParseInt(userIDStr, 10, 64)
+		if err != nil {
+			continue // Пропускаем некорректные ключи
+		}
+
+		userData, err := GetUser(userID)
+		if err != nil {
+			continue // Пропускаем пользователей с ошибками
+		}
+
+		users[userID] = userData
+	}
+
+	return users, nil
+}
+
 // GetDatabaseInfo получает информацию о базе данных
 func GetDatabaseInfo() (map[string]string, error) {
 	info, err := Client.Info(ctx).Result()
@@ -402,4 +413,153 @@ func GetMemoryStats() (map[string]interface{}, error) {
 	stats["persistent_keys_count"] = len(persistentKeys)
 
 	return stats, nil
+}
+
+// SaveQuizTime сохраняет время квиза на сегодня в Redis
+func SaveQuizTime(quizTime time.Time) error {
+	// Используем московское время (UTC+3)
+	moscowTZ := time.FixedZone("Moscow", 3*60*60)
+	now := time.Now().In(moscowTZ)
+	today := now.Format("2006-01-02")
+	key := fmt.Sprintf("quiz_time:%s", today)
+
+	// Сохраняем время в формате RFC3339 для точности
+	timeStr := quizTime.Format(time.RFC3339)
+
+	// Устанавливаем TTL до конца дня + 1 час (чтобы не потерять данные на границе дней)
+	endOfDay := time.Date(now.Year(), now.Month(), now.Day()+1, 1, 0, 0, 0, moscowTZ)
+	ttl := endOfDay.Sub(now)
+
+	return Client.Set(ctx, key, timeStr, ttl).Err()
+}
+
+// LoadQuizTime загружает время квиза на сегодня из Redis
+func LoadQuizTime() (time.Time, error) {
+	// Используем московское время (UTC+3)
+	moscowTZ := time.FixedZone("Moscow", 3*60*60)
+	today := time.Now().In(moscowTZ).Format("2006-01-02")
+	key := fmt.Sprintf("quiz_time:%s", today)
+
+	val, err := Client.Get(ctx, key).Result()
+	if err == redis.Nil {
+		return time.Time{}, fmt.Errorf("quiz time for today not found")
+	}
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	// Парсим время из RFC3339 формата
+	quizTime, err := time.Parse(time.RFC3339, val)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to parse quiz time: %v", err)
+	}
+
+	return quizTime, nil
+}
+
+// SetQuizAlreadyWas устанавливает флаг, что квиз сегодня уже был
+func SetQuizAlreadyWas() error {
+	// Используем московское время (UTC+3)
+	moscowTZ := time.FixedZone("Moscow", 3*60*60)
+	now := time.Now().In(moscowTZ)
+	today := now.Format("2006-01-02")
+	key := fmt.Sprintf("quiz_was:%s", today)
+
+	// Устанавливаем TTL до конца дня + 1 час (чтобы не потерять данные на границе дней)
+	endOfDay := time.Date(now.Year(), now.Month(), now.Day()+1, 1, 0, 0, 0, moscowTZ)
+	ttl := endOfDay.Sub(now)
+
+	return Client.Set(ctx, key, "true", ttl).Err()
+}
+
+// GetQuizAlreadyWas проверяет, был ли квиз сегодня уже
+func GetQuizAlreadyWas() (bool, error) {
+	// Используем московское время (UTC+3)
+	moscowTZ := time.FixedZone("Moscow", 3*60*60)
+	today := time.Now().In(moscowTZ).Format("2006-01-02")
+	key := fmt.Sprintf("quiz_was:%s", today)
+
+	val, err := Client.Get(ctx, key).Result()
+	if err == redis.Nil {
+		return false, nil // Квиза сегодня еще не было
+	}
+	if err != nil {
+		return false, err
+	}
+
+	return val == "true", nil
+}
+
+// ClearQuizAlreadyWas очищает флаг, что квиз сегодня уже был
+func ClearQuizAlreadyWas() error {
+	// Используем московское время (UTC+3)
+	moscowTZ := time.FixedZone("Moscow", 3*60*60)
+	today := time.Now().In(moscowTZ).Format("2006-01-02")
+	key := fmt.Sprintf("quiz_was:%s", today)
+
+	return Client.Del(ctx, key).Err()
+}
+
+// ResetAllUsersWinnerStatus сбрасывает состояние IsWinner в false у всех пользователей
+func ResetAllUsersWinnerStatus() error {
+	log.Printf("Starting winner status reset for all users...")
+
+	// Получаем все ключи пользователей (персистентные)
+	keys, err := Client.Keys(ctx, "user_persistent:*").Result()
+	if err != nil {
+		return fmt.Errorf("failed to get user keys: %v", err)
+	}
+
+	updatedCount := 0
+	for _, key := range keys {
+		// Извлекаем userID из ключа (формат: user_persistent:123456)
+		parts := strings.Split(key, ":")
+		if len(parts) != 2 {
+			continue
+		}
+
+		userID, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil {
+			log.Printf("Failed to parse userID from key %s: %v", key, err)
+			continue
+		}
+
+		// Получаем данные пользователя
+		val, err := Client.Get(ctx, key).Result()
+		if err != nil {
+			log.Printf("Failed to get user data for %d: %v", userID, err)
+			continue
+		}
+
+		var userData UserData
+		err = json.Unmarshal([]byte(val), &userData)
+		if err != nil {
+			log.Printf("Failed to unmarshal user data for %d: %v", userID, err)
+			continue
+		}
+
+		// Проверяем, нужно ли обновлять IsWinner
+		if userData.IsWinner {
+			userData.IsWinner = false
+
+			// Сохраняем обновленные данные в персистентное хранилище
+			err = SetUserPersistent(userID, &userData)
+			if err != nil {
+				log.Printf("Failed to save updated persistent user data for %d: %v", userID, err)
+				continue
+			}
+
+			// Также обновляем в памяти, если пользователь там есть
+			memKey := fmt.Sprintf("user:%d", userID)
+			if Client.Exists(ctx, memKey).Val() > 0 {
+				SetUser(userID, &userData)
+			}
+
+			updatedCount++
+			log.Printf("Reset winner status for user %d", userID)
+		}
+	}
+
+	log.Printf("Winner status reset completed. Updated %d users out of %d total.", updatedCount, len(keys))
+	return nil
 }
