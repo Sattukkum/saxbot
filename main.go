@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"saxbot/activities"
 	"saxbot/admins"
@@ -152,6 +153,9 @@ func replyMessage(c tele.Context, text string, threadID int) error {
 func main() {
 	godotenv.Load()
 
+	// Инициализируем генератор случайных чисел
+	rand.Seed(time.Now().UnixNano())
+
 	// Определяем флаги командной строки
 	clearRedis := flag.Bool("clear-redis", false, "Очистить базу данных Redis при запуске")
 	showInfo := flag.Bool("info", false, "Показать информацию о базе данных Redis и выйти")
@@ -241,7 +245,13 @@ func main() {
 		return
 	}
 
-	quizChatID, _ := strconv.ParseInt(os.Getenv("QUIZ_CHAT"), 10, 64)
+	// quizChat := os.Getenv("QUIZ_CHAT")
+	// log.Printf("QUIZ_CHAT: %s", quizChat)
+	// quizChatID, err := strconv.ParseInt(quizChat, 10, 64)
+	// if err != nil {
+	// 	log.Fatalf("Failed to parse QUIZ_CHAT: %v", err)
+	// }
+	quizChatID := int64(-1001673563051)
 
 	go func() {
 		for {
@@ -255,14 +265,17 @@ func main() {
 		// Используем московское время (UTC+3)
 		moscowTZ := time.FixedZone("Moscow", 3*60*60)
 
-		// При запуске пытаемся загрузить время квиза из Redis
-		if savedTime, err := redisClient.LoadQuizTime(); err == nil {
+		// При запуске пытаемся загрузить полные данные квиза из Redis
+		if quote, songName, savedTime, err := redisClient.LoadQuizData(); err == nil {
+			todayQuiz.Quote = quote
+			todayQuiz.SongName = songName
 			todayQuiz.QuizTime = savedTime.In(moscowTZ)
 			today := time.Date(savedTime.Year(), savedTime.Month(), savedTime.Day(), 0, 0, 0, 0, moscowTZ)
 			lastQuizDate = today
-			log.Printf("Загружено время квиза из Redis: %s", todayQuiz.QuizTime.Format("15:04"))
+			log.Printf("Загружены полные данные квиза из Redis: Quote='%s', SongName='%s', Time=%s",
+				todayQuiz.Quote, todayQuiz.SongName, todayQuiz.QuizTime.Format("15:04"))
 		} else {
-			log.Printf("Не удалось загрузить время квиза из Redis: %v", err)
+			log.Printf("Не удалось загрузить данные квиза из Redis: %v", err)
 		}
 
 		// При запуске загружаем флаг "квиз уже был"
@@ -294,20 +307,69 @@ func main() {
 				todayQuiz = activities.GetTodayQuiz()
 				lastQuizDate = today
 
-				// Сохраняем новое время квиза в Redis
-				if err := redisClient.SaveQuizTime(todayQuiz.QuizTime); err != nil {
-					log.Printf("Ошибка сохранения времени квиза в Redis: %v", err)
+				// Добавляем отладочную информацию
+				log.Printf("Generated quiz: Quote='%s', SongName='%s', Time=%s", todayQuiz.Quote, todayQuiz.SongName, todayQuiz.QuizTime.Format("15:04"))
+
+				// Проверяем, что квиз сгенерировался корректно
+				if todayQuiz.Quote == "" || todayQuiz.SongName == "" {
+					log.Printf("ПРЕДУПРЕЖДЕНИЕ: Сгенерированный квиз содержит пустые данные!")
+					log.Printf("Возможно, проблема с функцией GetRandomQuote() или данными в SongQuotes")
+				}
+
+				// Сохраняем полные данные квиза в Redis
+				if err := redisClient.SaveQuizData(todayQuiz.Quote, todayQuiz.SongName, todayQuiz.QuizTime); err != nil {
+					log.Printf("Ошибка сохранения данных квиза в Redis: %v", err)
 				} else {
-					log.Printf("Установлено и сохранено новое время квиза на сегодня: %s", todayQuiz.QuizTime.Format("15:04"))
+					log.Printf("Установлены и сохранены полные данные квиза на сегодня: Quote='%s', SongName='%s', Time=%s",
+						todayQuiz.Quote, todayQuiz.SongName, todayQuiz.QuizTime.Format("15:04"))
 				}
 			}
 
+			log.Printf("now: %s, todayQuiz.QuizTime: %s", now.Format("15:04"), todayQuiz.QuizTime.Format("15:04"))
+			log.Printf("quizAlreadyWas: %v, quizRunning: %v", quizAlreadyWas, quizRunning)
+
 			if now.After(todayQuiz.QuizTime) && !quizAlreadyWas && !quizRunning {
+				// Проверяем, есть ли валидные данные для квиза
+				if todayQuiz.Quote == "" || todayQuiz.SongName == "" || todayQuiz.QuizTime.IsZero() {
+					log.Printf("ПРЕДУПРЕЖДЕНИЕ: Отсутствуют данные квиза, генерируем новые...")
+					log.Printf("Старые данные - Quote: '%s', SongName: '%s', QuizTime: %v", todayQuiz.Quote, todayQuiz.SongName, todayQuiz.QuizTime)
+
+					// Сохраняем время, если оно есть
+					savedTime := todayQuiz.QuizTime
+
+					// Генерируем новые данные квиза
+					quote, songName := textcases.GetRandomQuote()
+					todayQuiz.Quote = quote
+					todayQuiz.SongName = songName
+
+					// Восстанавливаем время, если оно было валидным
+					if !savedTime.IsZero() {
+						todayQuiz.QuizTime = savedTime
+					} else {
+						// Если время тоже было нулевым, генерируем новое
+						todayQuiz = activities.GetTodayQuiz()
+					}
+
+					log.Printf("Сгенерированы новые данные квиза - Quote: '%s', SongName: '%s', Time: %s",
+						todayQuiz.Quote, todayQuiz.SongName, todayQuiz.QuizTime.Format("15:04"))
+				}
+
+				// Теперь запускаем квиз с валидными данными
 				admins.RemovePref(bot, &tele.Chat{ID: quizChatID})
 				quizRunning = true
-				bot.Send(tele.ChatID(quizChatID), "Интерактив! Угадай песню по цитате! Кто первый даст правильный ответ, получит приз!\nОбращаю внимание, что название песни нужно писать без ошибок!")
-				bot.Send(tele.ChatID(quizChatID), fmt.Sprintf("Сегодняшняя цитата:\n%s", todayQuiz.Quote))
-
+				log.Printf("Starting quiz in chat %d", quizChatID)
+				log.Printf("Quiz data before sending: Quote='%s', SongName='%s'", todayQuiz.Quote, todayQuiz.SongName)
+				_, err = bot.Send(tele.ChatID(quizChatID), "Интерактив! Угадай песню по цитате! Кто первый даст правильный ответ, получит приз!\nОбращаю внимание, что название песни нужно писать без ошибок!", &tele.SendOptions{ThreadID: 0})
+				if err != nil {
+					log.Printf("Failed to send quiz intro message: %v", err)
+				}
+				time.Sleep(100 * time.Millisecond)
+				quoteMessage := fmt.Sprintf("Сегодняшняя цитата:\n%s", todayQuiz.Quote)
+				log.Printf("Sending quote message: %s", quoteMessage)
+				_, err = bot.Send(tele.ChatID(quizChatID), quoteMessage, &tele.SendOptions{ThreadID: 0})
+				if err != nil {
+					log.Printf("Failed to send quiz question message: %v", err)
+				}
 			}
 
 			// Проверяем каждую минуту

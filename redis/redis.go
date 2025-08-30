@@ -500,6 +500,63 @@ func ClearQuizAlreadyWas() error {
 	return Client.Del(ctx, key).Err()
 }
 
+// QuizData структура для сохранения полных данных квиза
+type QuizData struct {
+	Quote    string    `json:"quote"`
+	SongName string    `json:"song_name"`
+	QuizTime time.Time `json:"quiz_time"`
+}
+
+// SaveQuizData сохраняет полные данные квиза на сегодня в Redis
+func SaveQuizData(quote, songName string, quizTime time.Time) error {
+	// Используем московское время (UTC+3)
+	moscowTZ := time.FixedZone("Moscow", 3*60*60)
+	now := time.Now().In(moscowTZ)
+	today := now.Format("2006-01-02")
+	key := fmt.Sprintf("quiz_data:%s", today)
+
+	quizData := QuizData{
+		Quote:    quote,
+		SongName: songName,
+		QuizTime: quizTime,
+	}
+
+	data, err := json.Marshal(quizData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal quiz data: %v", err)
+	}
+
+	// Устанавливаем TTL до конца дня + 1 час
+	endOfDay := time.Date(now.Year(), now.Month(), now.Day()+1, 1, 0, 0, 0, moscowTZ)
+	ttl := endOfDay.Sub(now)
+
+	return Client.Set(ctx, key, data, ttl).Err()
+}
+
+// LoadQuizData загружает полные данные квиза на сегодня из Redis
+func LoadQuizData() (string, string, time.Time, error) {
+	// Используем московское время (UTC+3)
+	moscowTZ := time.FixedZone("Moscow", 3*60*60)
+	today := time.Now().In(moscowTZ).Format("2006-01-02")
+	key := fmt.Sprintf("quiz_data:%s", today)
+
+	val, err := Client.Get(ctx, key).Result()
+	if err == redis.Nil {
+		return "", "", time.Time{}, fmt.Errorf("quiz data for today not found")
+	}
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+
+	var quizData QuizData
+	err = json.Unmarshal([]byte(val), &quizData)
+	if err != nil {
+		return "", "", time.Time{}, fmt.Errorf("failed to unmarshal quiz data: %v", err)
+	}
+
+	return quizData.Quote, quizData.SongName, quizData.QuizTime, nil
+}
+
 // ResetAllUsersWinnerStatus сбрасывает состояние IsWinner в false у всех пользователей
 func ResetAllUsersWinnerStatus() error {
 	log.Printf("Starting winner status reset for all users...")

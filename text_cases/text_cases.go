@@ -211,9 +211,17 @@ var SongQuotes = map[string]string{
 }
 
 func GetRandomQuote() (string, string) {
+	if len(SongQuotes) == 0 {
+		return "Цитаты не найдены", "Неизвестная песня"
+	}
+
 	quotes := make([]string, 0, len(SongQuotes))
 	for quote := range SongQuotes {
 		quotes = append(quotes, quote)
+	}
+
+	if len(quotes) == 0 {
+		return "Массив цитат пуст", "Неизвестная песня"
 	}
 
 	randomQuote := quotes[rand.Intn(len(quotes))]
@@ -225,18 +233,18 @@ func GetRandomQuote() (string, string) {
 func GetRandomTitle() string {
 
 	titles := []string{
-		"Охотник на буржуев",
+		// "Охотник на буржуев",
 		"КПСС стратег",
-		"Красный Молотобой",
-		"товарищ Анархокоммунист",
-		"Киберкоммунист 9000",
-		"Варвар Светлого Будущего",
+		// "Красный Молотобой",
+		// "товарищ Анархокоммунист",
+		// "Киберкоммунист 9000",
+		// "Варвар Светлого Будущего",
 		"Советский Вандал",
 		"Ржавый Серп",
 		"Маузер Троцкого",
 		"Заводской Гудок",
 		"Комиссар в Коже",
-		"Робот-чекист из СССР 2.0",
+		// "Робот-чекист из СССР 2.0",
 	}
 
 	return titles[rand.Intn(len(titles))]
