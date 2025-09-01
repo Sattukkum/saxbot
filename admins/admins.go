@@ -203,6 +203,7 @@ func RemovePref(bot *tele.Bot, chat *tele.Chat) {
 	// Получаем всех пользователей из Redis
 	allUsers, err := redis.GetAllUsers()
 	if err != nil {
+		log.Printf("RemovePref: Error getting all users: %v", err)
 		return // Если не удалось получить пользователей, ничего не делаем
 	}
 
@@ -214,6 +215,7 @@ func RemovePref(bot *tele.Bot, chat *tele.Chat) {
 
 		// Сбрасываем статус победителя
 		userData.IsWinner = false
+		log.Printf("RemovePref: Resetting winner status for user %d", userID)
 
 		// Получаем текущие права пользователя в чате
 		user := &tele.User{ID: userID}
@@ -222,16 +224,25 @@ func RemovePref(bot *tele.Bot, chat *tele.Chat) {
 			// Если пользователь не админ, просто обновляем данные в Redis
 			redis.SetUser(userID, userData)
 			redis.SetUserPersistent(userID, userData)
+			log.Printf("RemovePref: User %d is not admin, updating data in Redis", userID)
 			continue
 		}
 
 		// Если у пользователя был сохранен предыдущий титул, восстанавливаем его
 		if userData.AdminPref != "" {
-			bot.SetAdminTitle(chat, user, userData.AdminPref)
+			log.Printf("RemovePref: User %d has saved admin title, setting it back", userID)
+			err = bot.SetAdminTitle(chat, user, userData.AdminPref)
+			if err != nil {
+				log.Printf("RemovePref: Error setting admin title back: %v", err)
+			}
 			userData.AdminPref = "" // Очищаем сохраненный титул
 		} else {
 			// Если предыдущего титула не было, убираем титул полностью
-			bot.SetAdminTitle(chat, user, "")
+			log.Printf("RemovePref: User %d has no saved admin title, setting it to empty", userID)
+			err = bot.SetAdminTitle(chat, user, "")
+			if err != nil {
+				log.Printf("RemovePref: Error setting admin title to empty: %v", err)
+			}
 		}
 
 		// Обновляем данные в Redis
