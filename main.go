@@ -679,7 +679,7 @@ func main() {
 
 	bot.Handle(tele.OnDice, func(c tele.Context) error {
 		log.Printf("Received dice from user %d in chat %d", c.Message().Sender.ID, c.Message().Chat.ID)
-		if c.Message().Dice.Type == tele.Slot.Type {
+		if c.Message().Dice.Type == tele.Slot.Type && !admins.IsAdmin(c.Message().Sender.ID) {
 			bot.Delete(c.Message())
 		}
 		return nil
