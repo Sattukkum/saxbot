@@ -677,5 +677,13 @@ func main() {
 		return nil
 	})
 
+	bot.Handle(tele.OnDice, func(c tele.Context) error {
+		log.Printf("Received dice from user %d in chat %d", c.Message().Sender.ID, c.Message().Chat.ID)
+		if c.Message().Dice.Type == tele.Slot.Type {
+			bot.Delete(c.Message())
+		}
+		return nil
+	})
+
 	bot.Start()
 }
