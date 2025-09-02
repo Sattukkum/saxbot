@@ -1,4 +1,5 @@
 .env
+.serv
 # Binaries
 saxbot
 *.exe

@@ -237,11 +237,36 @@ func RemovePref(bot *tele.Bot, chat *tele.Chat) {
 			}
 			userData.AdminPref = "" // Очищаем сохраненный титул
 		} else {
-			// Если предыдущего титула не было, убираем титул полностью
-			log.Printf("RemovePref: User %d has no saved admin title, setting it to empty", userID)
-			err = bot.SetAdminTitle(chat, user, "")
-			if err != nil {
-				log.Printf("RemovePref: Error setting admin title to empty: %v", err)
+			// Если предыдущего титула не было, значит пользователь стал админом только для квиза
+			// Разжаловываем его полностью
+			log.Printf("RemovePref: User %d was not admin before quiz, demoting completely", userID)
+
+			// Попробуем разжаловать пользователя через Raw API
+			demoteParams := map[string]interface{}{
+				"chat_id":                chat.ID,
+				"user_id":                userID,
+				"is_anonymous":           false,
+				"can_manage_chat":        false,
+				"can_delete_messages":    false,
+				"can_manage_video_chats": false,
+				"can_restrict_members":   false,
+				"can_promote_members":    false,
+				"can_change_info":        false,
+				"can_invite_users":       false,
+				"can_pin_messages":       false,
+				"can_manage_topics":      false,
+			}
+
+			_, demoteErr := bot.Raw("promoteChatMember", demoteParams)
+			if demoteErr != nil {
+				log.Printf("RemovePref: Error demoting user %d with Raw API: %v", userID, demoteErr)
+				// Если не удалось разжаловать, хотя бы уберем титул
+				err = bot.SetAdminTitle(chat, user, "")
+				if err != nil {
+					log.Printf("RemovePref: Error setting admin title to empty: %v", err)
+				}
+			} else {
+				log.Printf("RemovePref: User %d demoted successfully", userID)
 			}
 		}
 

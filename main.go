@@ -576,6 +576,9 @@ func main() {
 			}
 		}
 		switch c.Message().Text {
+		case "🎰":
+			bot.Delete(c.Message())
+			return nil
 		case "Инфа", "инфа", "/info":
 			text := textcases.GetInfo()
 			return sendMessage(c, text, messageThreadID)
