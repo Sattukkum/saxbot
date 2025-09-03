@@ -133,8 +133,8 @@ var SongQuotes = map[string]string{
 	"Не пытайся капать мне на мозг!\nFuck you! FUCK YOU! FUCK, I'ma ghost": "Ghost Of Communism",
 
 	// USSR KID
-	"Кровь пролив за великую Русь\nБоже, храни, наш Советский Союз": "USSR KID",
-	"Soviet Punk — КПСС,\ndon't give a fuck, kickin' your ass":      "USSR KID",
+	"Кровь пролив за великую Русь\nБоже, храни наш Советский Союз": "USSR KID",
+	"Soviet Punk — КПСС,\ndon't give a fuck, kickin' your ass":     "USSR KID",
 
 	// У нас в Советах
 	"Вскормлена веками чушь в устах да бред,\nСкорбно наблюдаем чужестранный брег":                   "У нас в Советах",

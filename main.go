@@ -605,14 +605,14 @@ func main() {
 		if quizRunning {
 			if strings.EqualFold(c.Message().Text, todayQuiz.SongName) {
 				quizRunning = false
+				quizAlreadyWas = true
+				redisClient.SetQuizAlreadyWas()
 				winnerTitle := textcases.GetRandomTitle()
 				replyMessage(c, fmt.Sprintf("Правильно! Песня: %s", todayQuiz.SongName), messageThreadID)
 				time.Sleep(100 * time.Millisecond)
 				replyMessage(c, fmt.Sprintf("Поздравляем, %s! Ты победил и получил титул %s до следующего квиза!", c.Message().Sender.Username, winnerTitle), messageThreadID)
 				chatMember := &tele.ChatMember{User: c.Message().Sender, Role: tele.Member}
 				admins.SetPref(bot, c.Chat(), chatMember, winnerTitle)
-				quizAlreadyWas = true
-				redisClient.SetQuizAlreadyWas()
 			}
 		}
 		return nil
