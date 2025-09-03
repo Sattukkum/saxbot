@@ -55,7 +55,11 @@ func GetQuizData() (quiz QuoteQuiz, lastQuizDate time.Time) {
 		return quiz, lastQuizDate
 	} else {
 		log.Printf("Не удалось загрузить данные квиза из Redis: %v", err)
-		return QuoteQuiz{}, time.Time{}
+		// Возвращаем пустой квиз с вчерашней датой, чтобы инициировать создание нового квиза
+		moscowTZ := time.FixedZone("Moscow", 3*60*60)
+		yesterday := time.Now().In(moscowTZ).AddDate(0, 0, -1)
+		yesterdayDate := time.Date(yesterday.Year(), yesterday.Month(), yesterday.Day(), 0, 0, 0, 0, moscowTZ)
+		return QuoteQuiz{}, yesterdayDate
 	}
 }
 

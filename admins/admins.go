@@ -235,7 +235,7 @@ func RemovePref(bot *tele.Bot, chat *tele.Chat) {
 			log.Printf("RemovePref: User %d was not admin before quiz, demoting completely", userID)
 
 			// Попробуем разжаловать пользователя через Raw API
-			demoteParams := map[string]interface{}{
+			demoteParams := map[string]any{
 				"chat_id":                chat.ID,
 				"user_id":                userID,
 				"is_anonymous":           false,

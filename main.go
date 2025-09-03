@@ -95,7 +95,7 @@ func main() {
 		moscowTZ := time.FixedZone("Moscow", 3*60*60)
 
 		// Получить данные квиза из Redis
-		_, lastQuizDate := activities.GetQuizData()
+		todayQuiz, lastQuizDate := activities.GetQuizData()
 
 		// Получить флаг "квиз уже был" из Redis
 		if wasQuiz, err := redisClient.GetQuizAlreadyWas(); err == nil {
@@ -120,22 +120,27 @@ func main() {
 				lastQuizDate = today
 			}
 
+			// Если время квиза не установлено (например, при первом запуске), устанавливаем его
+			if todayQuiz.QuizTime.IsZero() {
+				todayQuiz.QuizTime = activities.EstimateQuizTime()
+				// Сохраняем в Redis для консистентности
+				if err := redisClient.SaveQuizData(todayQuiz.Quote, todayQuiz.SongName, todayQuiz.QuizTime); err != nil {
+					log.Printf("Ошибка сохранения времени квиза в Redis: %v", err)
+				}
+			}
+
 			log.Printf("now: %s, todayQuiz.QuizTime: %s", now.Format("15:04"), todayQuiz.QuizTime.Format("15:04"))
 			log.Printf("quizAlreadyWas: %v, quizRunning: %v", quizAlreadyWas, quizRunning)
 
 			if now.After(todayQuiz.QuizTime) && !quizAlreadyWas && !quizRunning {
-				// Проверяем, есть ли валидные данные для квиза
 				if todayQuiz.Quote == "" || todayQuiz.SongName == "" {
 					quote, songName := textcases.GetRandomQuote()
 					todayQuiz.Quote = quote
 					todayQuiz.SongName = songName
 				}
 
-				if todayQuiz.QuizTime.IsZero() {
-					todayQuiz.QuizTime = activities.EstimateQuizTime()
-				}
-
 				admins.RemovePref(bot, &tele.Chat{ID: quizChatID})
+
 				quizRunning = true
 				log.Printf("Starting quiz in chat %d", quizChatID)
 				_, err = bot.Send(tele.ChatID(quizChatID), textcases.QuizAnnouncement, &tele.SendOptions{ThreadID: 0})
