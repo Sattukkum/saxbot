@@ -2,32 +2,17 @@ package admins
 
 import (
 	"log"
-	"os"
+	"saxbot/environment"
 	"saxbot/redis"
 	"slices"
-	"strconv"
-	"strings"
 	"time"
 
 	tele "gopkg.in/telebot.v4"
 )
 
 func IsAdmin(userID int64) bool {
-	admins := os.Getenv("ADMINS")
-	if admins == "" {
-		return false
-	}
-	adminInts := make([]int, 0)
-	for s := range strings.SplitSeq(admins, ",") {
-		s = strings.TrimSpace(s)
-		if s == "" {
-			continue
-		}
-		if adminInt, err := strconv.Atoi(s); err == nil {
-			adminInts = append(adminInts, adminInt)
-		}
-	}
-	return slices.Contains(adminInts, int(userID))
+	admins := environment.GetAdmins()
+	return slices.Contains(admins, userID)
 }
 
 func BanUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember) {
@@ -98,7 +83,15 @@ func UnmuteUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember) {
 	existingData.Status = "active"
 	redis.SetUser(user.User.ID, existingData)
 	redis.SetUserPersistent(user.User.ID, existingData)
-	user.Rights = tele.Rights{CanSendMessages: true}
+	user.Rights = tele.Rights{
+		CanSendMessages:  true,
+		CanSendMedia:     true,
+		CanSendAudios:    true,
+		CanSendVideos:    true,
+		CanSendPhotos:    true,
+		CanSendDocuments: true,
+		CanSendOther:     true,
+	}
 	bot.Restrict(chat, user)
 }
 

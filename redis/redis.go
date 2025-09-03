@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
+	"saxbot/environment"
 	"slices"
 	"strconv"
 	"strings"
@@ -46,7 +46,7 @@ func CloseRedis() error {
 }
 
 // SetWithExpiration устанавливает значение с временем жизни
-func SetWithExpiration(key string, value interface{}, expiration time.Duration) error {
+func SetWithExpiration(key string, value any, expiration time.Duration) error {
 	return Client.Set(ctx, key, value, expiration).Err()
 }
 
@@ -147,26 +147,13 @@ func GetUser(userID int64) (*UserData, error) {
 	}
 
 	// Пользователь не найден ни в памяти, ни на диске - создаем нового
-	admins := os.Getenv("ADMINS")
-	if admins == "" {
+	admins := environment.GetAdmins()
+	if len(admins) == 0 {
 		log.Printf("ADMINS environment variable is empty")
 	}
 
-	adminInts := make([]int, 0)
-	for _, s := range strings.Split(admins, ",") {
-		s = strings.TrimSpace(s)
-		if s == "" {
-			continue
-		}
-		if adminInt, err := strconv.Atoi(s); err == nil {
-			adminInts = append(adminInts, adminInt)
-		} else {
-			log.Printf("Failed to parse admin ID '%s': %v", s, err)
-		}
-	}
-
 	var userData *UserData
-	if slices.Contains(adminInts, int(userID)) {
+	if slices.Contains(admins, userID) {
 		log.Printf("userID: %d is admin", userID)
 		userData = &UserData{Username: "", IsAdmin: true, Warns: 0, Status: "active", IsWinner: false}
 	} else {
@@ -224,23 +211,12 @@ func UpdateUserWarns(userID int64, delta int) error {
 
 // UpdateUserAdminStatus обновляет админский статус пользователя на основе переменной окружения ADMINS
 func UpdateUserAdminStatus(userID int64, userData *UserData) bool {
-	admins := os.Getenv("ADMINS")
-	if admins == "" {
+	admins := environment.GetAdmins()
+	if len(admins) == 0 {
 		return false
 	}
 
-	adminInts := make([]int, 0)
-	for _, s := range strings.Split(admins, ",") {
-		s = strings.TrimSpace(s)
-		if s == "" {
-			continue
-		}
-		if adminInt, err := strconv.Atoi(s); err == nil {
-			adminInts = append(adminInts, adminInt)
-		}
-	}
-
-	newAdminStatus := slices.Contains(adminInts, int(userID))
+	newAdminStatus := slices.Contains(admins, userID)
 	if userData.IsAdmin != newAdminStatus {
 		log.Printf("Updating admin status for user %d: %t -> %t", userID, userData.IsAdmin, newAdminStatus)
 		userData.IsAdmin = newAdminStatus
@@ -389,13 +365,13 @@ func CleanupExpiredKeys() error {
 }
 
 // GetMemoryStats получает статистику использования памяти
-func GetMemoryStats() (map[string]interface{}, error) {
+func GetMemoryStats() (map[string]any, error) {
 	info, err := Client.Info(ctx, "memory").Result()
 	if err != nil {
 		return nil, err
 	}
 
-	stats := make(map[string]interface{})
+	stats := make(map[string]any)
 	lines := strings.Split(info, "\r\n")
 	for _, line := range lines {
 		if strings.Contains(line, ":") {

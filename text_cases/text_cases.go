@@ -3,8 +3,10 @@ package textcases
 import (
 	"fmt"
 	"math/rand"
-	"os"
+	"saxbot/environment"
 )
+
+var QuizAnnouncement = "Интерактив! Угадай песню по цитате! Кто первый даст правильный ответ, получит приз!\nОбращаю внимание, что название песни нужно писать без ошибок!"
 
 func GetWarnCase(username string, lenaFlag bool) string {
 
@@ -82,11 +84,7 @@ func GetWarnCase(username string, lenaFlag bool) string {
 
 func GetInfo() string {
 
-	yandexLink := os.Getenv("YANDEX_LINK")
-	youtubeLink := os.Getenv("YOUTUBE_LINK")
-	vkLink := os.Getenv("VK_LINK")
-	boostLink := os.Getenv("BOOST_LINK")
-	donateLink := os.Getenv("DONATE_LINK")
+	LinksData := environment.GetDataEnvironment()
 
 	return fmt.Sprintf(`Здарова, товарищ! Это чатик Nick Sax.
 Слушать на Яндекс.Музыке: %s
@@ -104,7 +102,7 @@ func GetInfo() string {
 Если в чатике дичь, кто-то нарушает правила или спамит, можно вызвать админов командой "Админ" (вызов админов без веской причины карается банхаммером)
 
 Наслаждайся общением с нежитью!
-`, yandexLink, youtubeLink, vkLink, donateLink, boostLink)
+`, LinksData.YandexLink, LinksData.YoutubeLink, LinksData.VkLink, LinksData.DonateLink, LinksData.BoostLink)
 }
 
 var SongQuotes = map[string]string{
