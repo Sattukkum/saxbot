@@ -181,7 +181,7 @@ func main() {
 			return nil
 		}
 
-		var messageThreadID int
+		messageThreadID := c.Message().ThreadID
 
 		userID := c.Message().Sender.ID
 		isReply := c.Message().IsReply()
