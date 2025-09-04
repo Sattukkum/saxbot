@@ -126,7 +126,7 @@ func getQuizChatID() int64 {
 	quizChatID := os.Getenv("TARGET_CHAT")
 	if quizChatID == "" {
 		log.Printf("TARGET_CHAT environment variable is empty")
-		return 0
+		return int64(-1001673563051)
 	}
 	quizChatIDInt, _ := strconv.ParseInt(strings.TrimSpace(quizChatID), 10, 64)
 	return quizChatIDInt
