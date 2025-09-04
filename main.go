@@ -266,7 +266,7 @@ func main() {
 					chatMember := &tele.ChatMember{User: user, Role: tele.Member}
 					admins.BanUser(bot, c.Message().Chat, chatMember)
 					bot.Delete(c.Message().ReplyTo)
-					return messages.SendMessage(c, fmt.Sprintf("@%s идет нахуй из чатика", user.Username), messageThreadID)
+					return messages.ReplyMessage(c, fmt.Sprintf("@%s идет нахуй из чатика", user.Username), messageThreadID)
 				} else {
 					if userID == katyaID {
 						return messages.ReplyMessage(c, "Катенька, зачиллься, остынь, успокойся, не надо так", messageThreadID)
@@ -283,7 +283,7 @@ func main() {
 						CanSendMessages: false,
 					}}
 					admins.MuteUser(bot, c.Chat(), chatMember)
-					return messages.SendMessage(c, fmt.Sprintf("@%s помолчит полчасика и подумает о своем поведении", replyToUserData.Username), messageThreadID)
+					return messages.ReplyMessage(c, fmt.Sprintf("@%s помолчит полчасика и подумает о своем поведении", replyToUserData.Username), messageThreadID)
 				} else {
 					if userID == katyaID {
 						return messages.ReplyMessage(c, "Катенька, зачиллься, остынь, успокойся, не надо так", messageThreadID)
@@ -296,7 +296,7 @@ func main() {
 						CanSendMessages: true,
 					}}
 					admins.UnmuteUser(bot, c.Chat(), chatMember)
-					return messages.SendMessage(c, fmt.Sprintf("@%s размучен. А то че как воды в рот набрал", replyToUserData.Username), messageThreadID)
+					return messages.ReplyMessage(c, fmt.Sprintf("@%s размучен. А то че как воды в рот набрал", replyToUserData.Username), messageThreadID)
 				} else {
 					return messages.ReplyMessage(c, "Кого размутить?", messageThreadID)
 				}
