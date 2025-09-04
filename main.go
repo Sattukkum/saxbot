@@ -40,6 +40,7 @@ func main() {
 	// Флаги командной строки
 	clearRedis := flag.Bool("clear-redis", false, "Очистить базу данных Redis и выйти")
 	showInfo := flag.Bool("info", false, "Показать информацию о базе данных Redis и выйти")
+	restoreBackup := flag.Bool("restore-backup", false, "Восстановить базу данных Redis из бэкапа redis_data/dump.rdb и выйти")
 	flag.Parse()
 
 	if redisHost == "" {
@@ -64,6 +65,11 @@ func main() {
 
 	if *clearRedis {
 		redisClient.ClearRedis()
+		return
+	}
+
+	if *restoreBackup {
+		redisClient.RestoreBackup()
 		return
 	}
 
