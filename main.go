@@ -101,7 +101,8 @@ func main() {
 		moscowTZ := time.FixedZone("Moscow", 3*60*60)
 
 		// Получить данные квиза из Redis
-		todayQuiz, lastQuizDate := activities.GetQuizData()
+		var lastQuizDate time.Time
+		todayQuiz, lastQuizDate = activities.GetQuizData()
 
 		// Получить флаг "квиз уже был" из Redis
 		if wasQuiz, err := redisClient.GetQuizAlreadyWas(); err == nil {
@@ -155,7 +156,6 @@ func main() {
 				}
 				time.Sleep(100 * time.Millisecond)
 				quoteMessage := fmt.Sprintf("Сегодняшняя цитата:\n%s", todayQuiz.Quote)
-				log.Printf("Sending quote message: %s", quoteMessage)
 				_, err = bot.Send(tele.ChatID(quizChatID), quoteMessage, &tele.SendOptions{ThreadID: 0})
 				if err != nil {
 					log.Printf("Failed to send quiz question message: %v", err)
@@ -206,7 +206,9 @@ func main() {
 		if userData.Username != c.Message().Sender.Username {
 			userData.Username = c.Message().Sender.Username
 			redisClient.SetUser(userID, userData)
-			redisClient.SetUserPersistent(userID, userData)
+			if err := redisClient.SetUserPersistent(userID, userData); err != nil {
+				log.Printf("Failed to save persistent username update for user %d: %v", userID, err)
+			}
 		}
 
 		if userData.Status == "muted" {
@@ -217,7 +219,9 @@ func main() {
 		if userData.Status == "banned" {
 			userData.Status = "active"
 			redisClient.SetUser(userID, userData)
-			redisClient.SetUserPersistent(userID, userData)
+			if err := redisClient.SetUserPersistent(userID, userData); err != nil {
+				log.Printf("Failed to save persistent status update for user %d: %v", userID, err)
+			}
 			messages.SendMessage(c, fmt.Sprintf("@%s, тебя разбанили, но это можно исправить. Веди себя хорошо", userData.Username), messageThreadID)
 		}
 
@@ -230,7 +234,9 @@ func main() {
 			if replyToUserData.Username != c.Message().ReplyTo.Sender.Username {
 				replyToUserData.Username = c.Message().ReplyTo.Sender.Username
 				redisClient.SetUser(replyToID, replyToUserData)
-				redisClient.SetUserPersistent(replyToID, replyToUserData)
+				if err := redisClient.SetUserPersistent(replyToID, replyToUserData); err != nil {
+					log.Printf("Failed to save persistent username update for reply user %d: %v", replyToID, err)
+				}
 			}
 		}
 
@@ -248,7 +254,9 @@ func main() {
 				if isReply {
 					replyToUserData.Warns++
 					redisClient.SetUser(replyToID, replyToUserData)
-					redisClient.SetUserPersistent(replyToID, replyToUserData)
+					if err := redisClient.SetUserPersistent(replyToID, replyToUserData); err != nil {
+						log.Printf("Failed to save warns increase for user %d: %v", replyToID, err)
+					}
 					var text string
 					if strings.EqualFold(c.Message().ReplyTo.Text, "Лена") {
 						text = textcases.GetWarnCase(c.Message().ReplyTo.Sender.Username, true)
@@ -317,7 +325,7 @@ func main() {
 					chatMember := &tele.ChatMember{User: user, Role: tele.Member}
 					admins.BanUser(bot, c.Message().Chat, chatMember)
 					bot.Delete(c.Message().ReplyTo)
-					return messages.SendMessage(c, fmt.Sprintf("@%s идет нахуй из чатика", user.Username), messageThreadID)
+					return messages.ReplyMessage(c, fmt.Sprintf("@%s идет нахуй из чатика", user.Username), messageThreadID)
 				} else {
 					if userID == katyaID {
 						return messages.ReplyMessage(c, "Катенька, зачиллься, остынь, успокойся, не надо так", messageThreadID)
@@ -327,9 +335,6 @@ func main() {
 			}
 		}
 		switch c.Message().Text {
-		case "🎰":
-			bot.Delete(c.Message())
-			return nil
 		case "Инфа", "инфа", "/info":
 			text := textcases.GetInfo()
 			return messages.SendMessage(c, text, messageThreadID)
@@ -354,6 +359,9 @@ func main() {
 			}
 		}
 		if quizRunning {
+			log.Printf("Quiz running: %v", quizRunning)
+			log.Print(c.Message().Text)
+			log.Print(todayQuiz.SongName)
 			if strings.EqualFold(c.Message().Text, todayQuiz.SongName) {
 				quizRunning = false
 				quizAlreadyWas = true
@@ -385,7 +393,9 @@ func main() {
 		if userData.Username != joinedUser.Username {
 			userData.Username = joinedUser.Username
 			redisClient.SetUser(joinedUser.ID, userData)
-			redisClient.SetUserPersistent(joinedUser.ID, userData)
+			if err := redisClient.SetUserPersistent(joinedUser.ID, userData); err != nil {
+				log.Printf("Failed to save persistent username update for joined user %d: %v", joinedUser.ID, err)
+			}
 		}
 
 		return messages.SendMessage(c, fmt.Sprintf(`Добро пожаловать, @%s! Ты присоединился к чатику братства нежити. Напиши команду "Инфа", чтобы узнать, как тут все устроено`, userData.Username), c.Message().ThreadID)
@@ -406,7 +416,9 @@ func main() {
 		if userData.Username != c.Message().Sender.Username {
 			userData.Username = c.Message().Sender.Username
 			redisClient.SetUser(c.Message().Sender.ID, userData)
-			redisClient.SetUserPersistent(c.Message().Sender.ID, userData)
+			if err := redisClient.SetUserPersistent(c.Message().Sender.ID, userData); err != nil {
+				log.Printf("Failed to save persistent username update for photo sender %d: %v", c.Message().Sender.ID, err)
+			}
 		}
 
 		userID := c.Message().Sender.ID

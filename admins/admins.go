@@ -70,8 +70,13 @@ func MuteUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember) {
 }
 
 func UnmuteUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember) {
-	existingData, err := redis.GetUser(user.User.ID)
+	existingData, isNewUser, err := redis.GetUserSafe(user.User.ID)
 	if err != nil {
+		log.Printf("UnmuteUser: Redis error for user %d: %v - skipping operation", user.User.ID, err)
+		return
+	}
+	if isNewUser {
+		// Создаем нового пользователя только если он действительно новый
 		existingData = &redis.UserData{
 			Username: user.User.Username,
 			IsAdmin:  false,
@@ -82,7 +87,9 @@ func UnmuteUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember) {
 
 	existingData.Status = "active"
 	redis.SetUser(user.User.ID, existingData)
-	redis.SetUserPersistent(user.User.ID, existingData)
+	if err := redis.SetUserPersistent(user.User.ID, existingData); err != nil {
+		log.Printf("UnmuteUser: Failed to save persistent data for user %d: %v", user.User.ID, err)
+	}
 	user.Rights = tele.Rights{
 		CanSendMessages:  true,
 		CanSendMedia:     true,
@@ -98,8 +105,12 @@ func UnmuteUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember) {
 func SetPref(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, pref string) {
 	log.Printf("SetPref: Starting for user %d (%s) with pref '%s'", user.User.ID, user.User.Username, pref)
 
-	existingData, err := redis.GetUser(user.User.ID)
+	existingData, isNewUser, err := redis.GetUserSafe(user.User.ID)
 	if err != nil {
+		log.Printf("SetPref: Redis error for user %d: %v - skipping operation", user.User.ID, err)
+		return
+	}
+	if isNewUser {
 		log.Printf("SetPref: User not found in Redis, creating new data")
 		existingData = &redis.UserData{
 			Username: user.User.Username,
@@ -113,7 +124,10 @@ func SetPref(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, pref string)
 
 	existingData.IsWinner = true
 	redis.SetUser(user.User.ID, existingData)
-	redis.SetUserPersistent(user.User.ID, existingData)
+	if err := redis.SetUserPersistent(user.User.ID, existingData); err != nil {
+		log.Printf("SetPref: Failed to save persistent data for user %d: %v", user.User.ID, err)
+		return
+	}
 	log.Printf("SetPref: Updated user data in Redis")
 
 	// Получаем текущие права пользователя

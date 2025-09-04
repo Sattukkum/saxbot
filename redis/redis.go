@@ -147,6 +147,7 @@ func GetUser(userID int64) (*UserData, error) {
 	}
 
 	// Пользователь не найден ни в памяти, ни на диске - создаем нового
+	log.Printf("Creating new user %d (not found in persistent storage)", userID)
 	admins := environment.GetAdmins()
 	if len(admins) == 0 {
 		log.Printf("ADMINS environment variable is empty")
@@ -168,8 +169,82 @@ func GetUser(userID int64) (*UserData, error) {
 	return userData, nil
 }
 
+// GetUserSafe получает данные пользователя без создания нового при ошибках Redis
+// Возвращает (userData, isNewUser, error)
+// isNewUser = true только если пользователь действительно не найден (redis.Nil)
+// isNewUser = false если произошла ошибка Redis или пользователь существует
+func GetUserSafe(userID int64) (*UserData, bool, error) {
+	// Сначала ищем в оперативной памяти (с TTL)
+	key := fmt.Sprintf("user:%d", userID)
+	val, err := Client.Get(ctx, key).Result()
+	if err == nil {
+		// Данные найдены в памяти
+		var userData UserData
+		err = json.Unmarshal([]byte(val), &userData)
+		if err != nil {
+			return nil, false, fmt.Errorf("failed to unmarshal user data from memory: %v", err)
+		}
+
+		// Проверяем и обновляем админский статус
+		if UpdateUserAdminStatus(userID, &userData) {
+			// Если статус изменился, сохраняем обновленные данные
+			SetUser(userID, &userData)
+			SetUserPersistent(userID, &userData)
+		}
+
+		return &userData, false, nil
+	}
+
+	if err != redis.Nil {
+		// Ошибка Redis - не создаем нового пользователя
+		log.Printf("Redis error when getting user %d from memory: %v", userID, err)
+		return nil, false, err
+	}
+
+	// Если не найдены в памяти, ищем на диске (персистентные данные)
+	persistentKey := fmt.Sprintf("user_persistent:%d", userID)
+	val, err = Client.Get(ctx, persistentKey).Result()
+	if err == nil {
+		// Данные найдены на диске, загружаем в память с TTL
+		var userData UserData
+		err = json.Unmarshal([]byte(val), &userData)
+		if err != nil {
+			return nil, false, fmt.Errorf("failed to unmarshal user data from disk: %v", err)
+		}
+
+		// Проверяем и обновляем админский статус
+		statusChanged := UpdateUserAdminStatus(userID, &userData)
+
+		// Сохраняем в память с TTL для быстрого доступа
+		SetUser(userID, &userData)
+
+		// Если статус изменился, также обновляем персистентные данные
+		if statusChanged {
+			SetUserPersistent(userID, &userData)
+		}
+
+		return &userData, false, nil
+	}
+
+	if err != redis.Nil {
+		// Ошибка Redis - не создаем нового пользователя
+		log.Printf("Redis error when getting user %d from persistent storage: %v", userID, err)
+		return nil, false, err
+	}
+
+	// Пользователь действительно не найден ни в памяти, ни на диске
+	log.Printf("User %d truly not found in any storage - can create new", userID)
+	return nil, true, nil
+}
+
 // SetUser сохраняет данные пользователя в Redis с TTL 30 минут
 func SetUser(userID int64, userData *UserData) error {
+	// Проверяем целостность данных перед сохранением (но не блокируем для памяти)
+	if err := validateUserDataIntegrity(userID, userData); err != nil {
+		log.Printf("Warning: SetUser data integrity check failed for user %d: %v", userID, err)
+		// Для памяти не блокируем, так как данные временные
+	}
+
 	key := fmt.Sprintf("user:%d", userID)
 	data, err := json.Marshal(userData)
 	if err != nil {
@@ -181,6 +256,12 @@ func SetUser(userID int64, userData *UserData) error {
 
 // SetUserPersistent сохраняет данные пользователя в Redis без TTL (для сохранения на диск)
 func SetUserPersistent(userID int64, userData *UserData) error {
+	// Проверяем целостность данных перед сохранением
+	if err := validateUserDataIntegrity(userID, userData); err != nil {
+		log.Printf("Blocking save for user %d: %v", userID, err)
+		return err // Блокируем сохранение при подозрительных данных
+	}
+
 	key := fmt.Sprintf("user_persistent:%d", userID)
 	data, err := json.Marshal(userData)
 	if err != nil {
@@ -188,6 +269,34 @@ func SetUserPersistent(userID int64, userData *UserData) error {
 	}
 	// Сохраняем без TTL для персистентности на диске
 	return Client.Set(ctx, key, data, 0).Err()
+}
+
+// validateUserDataIntegrity проверяет подозрительные случаи обнуления данных
+func validateUserDataIntegrity(userID int64, userData *UserData) error {
+	// Проверяем существующие данные в персистентном хранилище
+	existingKey := fmt.Sprintf("user_persistent:%d", userID)
+	val, err := Client.Get(ctx, existingKey).Result()
+
+	if err == nil {
+		// Пользователь уже существует в персистентном хранилище
+		var existingData UserData
+		if json.Unmarshal([]byte(val), &existingData) == nil {
+			// КРИТИЧЕСКАЯ ЗАЩИТА: запрещаем сохранение данных с меньшим количеством предупреждений
+			if userData.Warns < existingData.Warns {
+				return fmt.Errorf("prevented data corruption: cannot reduce warns from %d to %d (warns can only increase)", existingData.Warns, userData.Warns)
+			}
+
+			// Логируем сброс IsWinner (это нормально для квиза)
+			if existingData.IsWinner && !userData.IsWinner {
+				log.Printf("Info: Resetting IsWinner for user %d (normal for quiz reset)", userID)
+			}
+		}
+	} else if err != redis.Nil {
+		// Если есть ошибка доступа к Redis (не "ключ не найден"), логируем это
+		log.Printf("Warning: Could not check existing data for user %d: %v", userID, err)
+	}
+
+	return nil
 }
 
 // UpdateUserWarns обновляет количество предупреждений пользователя
