@@ -6,11 +6,13 @@ import (
 	"log"
 	"saxbot/activities"
 	"saxbot/admins"
+	"saxbot/database"
 	"saxbot/environment"
 	"saxbot/messages"
 	redisClient "saxbot/redis"
 	textcases "saxbot/text_cases"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,8 +20,6 @@ import (
 	tele "gopkg.in/telebot.v4"
 )
 
-var lastKatyaMessage time.Time
-var photoFlag = false
 var todayQuiz activities.QuoteQuiz
 var quizRunning = false
 var quizAlreadyWas = false
@@ -27,15 +27,14 @@ var quizAlreadyWas = false
 func main() {
 	godotenv.Load()
 
-	environment := environment.GetMainEnvironment()
-	botToken := environment.Token
-	allowedChats := environment.AllowedChats
-	katyaID := environment.KatyaID
-	// adminsList := environment.Admins
-	redisHost := environment.RedisHost
-	redisPort := environment.RedisPort
-	// redisDB := environment.RedisDB
-	quizChatID := environment.QuizChatID
+	mainEnv := environment.GetMainEnvironment()
+	botToken := mainEnv.Token
+	allowedChats := mainEnv.AllowedChats
+	// adminsList := mainEnv.Admins
+	redisHost := mainEnv.RedisHost
+	redisPort := mainEnv.RedisPort
+	// redisDB := mainEnv.RedisDB
+	quizChatID := mainEnv.QuizChatID
 
 	// Флаги командной строки
 	clearRedis := flag.Bool("clear-redis", false, "Очистить базу данных Redis и выйти")
@@ -58,6 +57,35 @@ func main() {
 	}
 	defer redisClient.CloseRedis()
 
+	// Инициализируем подключение к PostgreSQL
+	pgEnv := environment.GetPostgreSQLEnvironment()
+	pgPort := 5432
+	if pgEnv.Port != "" {
+		if parsedPort, parseErr := strconv.Atoi(pgEnv.Port); parseErr == nil {
+			pgPort = parsedPort
+		}
+	}
+
+	err = database.InitPostgreSQL(pgEnv.Host, pgEnv.User, pgEnv.Password, pgEnv.Database, pgPort, pgEnv.SSLMode)
+	if err != nil {
+		panic(fmt.Sprintf("Предупреждение: не удалось подключиться к PostgreSQL: %v", err))
+	} else {
+		defer database.ClosePostgreSQL()
+
+		// Выполняем миграцию базы данных
+		err = database.AutoMigrate()
+		if err != nil {
+			log.Printf("Предупреждение: не удалось выполнить миграцию PostgreSQL: %v", err)
+		} else {
+			// Инициализируем fallback интерфейс для Redis
+			database.InitRedisFallback()
+
+			// Инициализируем сервис синхронизации
+			database.InitSyncService()
+			defer database.CleanupSyncService()
+		}
+	}
+
 	if *showInfo {
 		redisClient.ShowInfo()
 		return
@@ -74,7 +102,7 @@ func main() {
 	}
 
 	log.Printf("Обновляем админские права пользователей из переменной окружения ADMINS...")
-	err = redisClient.RefreshAllUsersAdminStatus()
+	err = database.RefreshAllUsersAdminStatusWithSync()
 	if err != nil {
 		log.Printf("Предупреждение: не удалось обновить админские права: %v", err)
 	}
@@ -91,27 +119,20 @@ func main() {
 	}
 
 	go func() {
-		for {
-			time.Sleep(30 * time.Second)
-			photoFlag = false
-		}
-	}()
-
-	go func() {
 		moscowTZ := time.FixedZone("Moscow", 3*60*60)
 
 		// Получить данные квиза из Redis
 		var lastQuizDate time.Time
 		todayQuiz, lastQuizDate = activities.GetQuizData()
 
-		// Получить флаг "квиз уже был" из Redis
-		if wasQuiz, err := redisClient.GetQuizAlreadyWas(); err == nil {
+		// Получить флаг "квиз уже был" с fallback на PostgreSQL
+		if wasQuiz, err := database.GetQuizAlreadyWasWithFallback(); err == nil {
 			quizAlreadyWas = wasQuiz
 			if wasQuiz {
 				log.Printf("Квиз сегодня уже был проведен")
 			}
 		} else {
-			log.Printf("Не удалось загрузить флаг квиза из Redis: %v", err)
+			log.Printf("Не удалось загрузить флаг квиза: %v", err)
 		}
 
 		quizRunning = false
@@ -131,7 +152,7 @@ func main() {
 			if todayQuiz.QuizTime.IsZero() {
 				todayQuiz.QuizTime = activities.EstimateQuizTime()
 				// Сохраняем в Redis для консистентности
-				if err := redisClient.SaveQuizData(todayQuiz.Quote, todayQuiz.SongName, todayQuiz.QuizTime); err != nil {
+				if err := database.SaveQuizDataWithSync(todayQuiz.Quote, todayQuiz.SongName, todayQuiz.QuizTime); err != nil {
 					log.Printf("Ошибка сохранения времени квиза в Redis: %v", err)
 				}
 			}
@@ -177,8 +198,6 @@ func main() {
 		}
 	}()
 
-	lastKatyaMessage = time.Now().Add(-30 * time.Minute)
-
 	bot.Handle(tele.OnText, func(c tele.Context) error {
 		log.Printf("Received message: '%s' from user %d in chat %d", c.Message().Text, c.Message().Sender.ID, c.Message().Chat.ID)
 
@@ -205,8 +224,7 @@ func main() {
 		}
 		if userData.Username != c.Message().Sender.Username {
 			userData.Username = c.Message().Sender.Username
-			redisClient.SetUser(userID, userData)
-			if err := redisClient.SetUserPersistent(userID, userData); err != nil {
+			if err := database.SetUserPersistentWithSync(userID, userData); err != nil {
 				log.Printf("Failed to save persistent username update for user %d: %v", userID, err)
 			}
 		}
@@ -218,8 +236,7 @@ func main() {
 
 		if userData.Status == "banned" {
 			userData.Status = "active"
-			redisClient.SetUser(userID, userData)
-			if err := redisClient.SetUserPersistent(userID, userData); err != nil {
+			if err := database.SetUserPersistentWithSync(userID, userData); err != nil {
 				log.Printf("Failed to save persistent status update for user %d: %v", userID, err)
 			}
 			messages.SendMessage(c, fmt.Sprintf("@%s, тебя разбанили, но это можно исправить. Веди себя хорошо", userData.Username), messageThreadID)
@@ -233,29 +250,20 @@ func main() {
 			}
 			if replyToUserData.Username != c.Message().ReplyTo.Sender.Username {
 				replyToUserData.Username = c.Message().ReplyTo.Sender.Username
-				redisClient.SetUser(replyToID, replyToUserData)
-				if err := redisClient.SetUserPersistent(replyToID, replyToUserData); err != nil {
+				if err := database.SetUserPersistentWithSync(replyToID, replyToUserData); err != nil {
 					log.Printf("Failed to save persistent username update for reply user %d: %v", replyToID, err)
 				}
 			}
 		}
 
-		if userID == katyaID {
-			if time.Since(lastKatyaMessage) > 30*time.Minute {
-				lastKatyaMessage = time.Now()
-				messages.ReplyMessage(c, "🚨ВНИМАНИЕ! АЛАРМ!🚨 КАТЕНЬКА В ЧАТЕ!💀 ЭТО НЕ УЧЕБНАЯ ТРЕВОГА! ПОВТОРЯЮ, ЭТО НЕ УЧЕБНАЯ ТРЕВОГА!⛔\n❗ВСЕМ ОБЯЗАТЕЛЬНО СЛУШАТЬСЯ КАТЕНЬКУ❗", messageThreadID)
-			}
-			lastKatyaMessage = time.Now()
-		}
-
-		if userData.IsAdmin || userID == katyaID || userData.IsWinner {
+		if userData.IsAdmin || userData.IsWinner {
 			switch c.Message().Text {
 			case "Предупреждение", "предупреждение", "ПРЕДУПРЕЖДЕНИЕ":
 				if isReply {
-					replyToUserData.Warns++
-					redisClient.SetUser(replyToID, replyToUserData)
-					if err := redisClient.SetUserPersistent(replyToID, replyToUserData); err != nil {
+					if err := database.UpdateUserWarnsWithSync(replyToID, 1); err != nil {
 						log.Printf("Failed to save warns increase for user %d: %v", replyToID, err)
+					} else {
+						replyToUserData.Warns++ // Обновляем локальную копию для дальнейшего использования
 					}
 					var text string
 					if strings.EqualFold(c.Message().ReplyTo.Text, "Лена") {
@@ -272,7 +280,7 @@ func main() {
 					return messages.ReplyToOriginalMessage(c, "Извинись дон. Скажи, что ты был не прав дон. Или имей в виду — на всю оставшуюся жизнь у нас с тобой вражда", messageThreadID)
 				}
 			case "Пошел нахуй", "пошел нахуй", "Пошла нахуй", "пошла нахуй", "/ban":
-				if isReply && userID != katyaID && (userData.IsAdmin || !userData.IsWinner) {
+				if isReply && (userData.IsAdmin || !userData.IsWinner) {
 					if replyToUserData.IsAdmin {
 						return messages.ReplyMessage(c, "Ты не можешь банить других админов, соси писос", messageThreadID)
 					}
@@ -282,13 +290,10 @@ func main() {
 					bot.Delete(c.Message().ReplyTo)
 					return messages.ReplyMessage(c, fmt.Sprintf("@%s идет нахуй из чатика", user.Username), messageThreadID)
 				} else {
-					if userID == katyaID {
-						return messages.ReplyMessage(c, "Катенька, зачиллься, остынь, успокойся, не надо так", messageThreadID)
-					}
 					return messages.ReplyMessage(c, "Банхаммер готов. Кого послать нахуй?", messageThreadID)
 				}
 			case "Мут", "мут", "Ебало завали", "ебало завали", "/mute":
-				if isReply && userID != katyaID && (userData.IsAdmin || !userData.IsWinner) {
+				if isReply && (userData.IsAdmin || !userData.IsWinner) {
 					if replyToUserData.IsAdmin {
 						return messages.ReplyMessage(c, "Ты не можешь мутить других админов, соси писос", messageThreadID)
 					}
@@ -299,9 +304,6 @@ func main() {
 					admins.MuteUser(bot, c.Chat(), chatMember)
 					return messages.ReplyMessage(c, fmt.Sprintf("@%s помолчит полчасика и подумает о своем поведении", replyToUserData.Username), messageThreadID)
 				} else {
-					if userID == katyaID {
-						return messages.ReplyMessage(c, "Катенька, зачиллься, остынь, успокойся, не надо так", messageThreadID)
-					}
 					return messages.ReplyMessage(c, "Кого мутить?", messageThreadID)
 				}
 			case "Размут", "размут", "/unmute":
@@ -315,7 +317,7 @@ func main() {
 					return messages.ReplyMessage(c, "Кого размутить?", messageThreadID)
 				}
 			case "Нацик", "нацик", "НАЦИК":
-				if isReply && userID != katyaID && (userData.IsAdmin || !userData.IsWinner) {
+				if isReply && (userData.IsAdmin || !userData.IsWinner) {
 					if replyToUserData.IsAdmin {
 						return messages.ReplyMessage(c, "Ты не можешь банить других админов, соси писос", messageThreadID)
 					}
@@ -327,9 +329,6 @@ func main() {
 					bot.Delete(c.Message().ReplyTo)
 					return messages.ReplyMessage(c, fmt.Sprintf("@%s идет нахуй из чатика", user.Username), messageThreadID)
 				} else {
-					if userID == katyaID {
-						return messages.ReplyMessage(c, "Катенька, зачиллься, остынь, успокойся, не надо так", messageThreadID)
-					}
 					return messages.ReplyMessage(c, "Кому яйца жмут?", messageThreadID)
 				}
 			}
@@ -365,7 +364,7 @@ func main() {
 			if strings.EqualFold(c.Message().Text, todayQuiz.SongName) {
 				quizRunning = false
 				quizAlreadyWas = true
-				redisClient.SetQuizAlreadyWas()
+				database.SetQuizAlreadyWasWithSync()
 				winnerTitle := textcases.GetRandomTitle()
 				messages.ReplyMessage(c, fmt.Sprintf("Правильно! Песня: %s", todayQuiz.SongName), messageThreadID)
 				time.Sleep(100 * time.Millisecond)
@@ -392,44 +391,12 @@ func main() {
 		}
 		if userData.Username != joinedUser.Username {
 			userData.Username = joinedUser.Username
-			redisClient.SetUser(joinedUser.ID, userData)
-			if err := redisClient.SetUserPersistent(joinedUser.ID, userData); err != nil {
+			if err := database.SetUserPersistentWithSync(joinedUser.ID, userData); err != nil {
 				log.Printf("Failed to save persistent username update for joined user %d: %v", joinedUser.ID, err)
 			}
 		}
 
 		return messages.SendMessage(c, fmt.Sprintf(`Добро пожаловать, @%s! Ты присоединился к чатику братства нежити. Напиши команду "Инфа", чтобы узнать, как тут все устроено`, userData.Username), c.Message().ThreadID)
-	})
-
-	bot.Handle(tele.OnPhoto, func(c tele.Context) error {
-		log.Printf("Received photo from user %d in chat %d", c.Message().Sender.ID, c.Message().Chat.ID)
-
-		if !slices.Contains(allowedChats, c.Message().Chat.ID) {
-			return nil
-		}
-
-		userData, err := redisClient.GetUser(c.Message().Sender.ID)
-		if err != nil {
-			log.Printf("Failed to get user data: %v", err)
-			return nil
-		}
-		if userData.Username != c.Message().Sender.Username {
-			userData.Username = c.Message().Sender.Username
-			redisClient.SetUser(c.Message().Sender.ID, userData)
-			if err := redisClient.SetUserPersistent(c.Message().Sender.ID, userData); err != nil {
-				log.Printf("Failed to save persistent username update for photo sender %d: %v", c.Message().Sender.ID, err)
-			}
-		}
-
-		userID := c.Message().Sender.ID
-
-		if userID == katyaID && !photoFlag {
-			photoFlag = true
-			lastKatyaMessage = time.Now()
-			return messages.ReplyMessage(c, "💖 СРОЧНО ВСЕМ ЛЮБОВАТЬСЯ НОВОЙ ФОТОЧКОЙ КАТЕНЬКИ! 💖\n😠 ЗА НЕГАТИВНЫЕ РЕАКЦИИ ПОЛУЧИТЕ ПРЕДУПРЕЖДЕНИЕ! 😠", c.Message().ThreadID)
-		}
-
-		return nil
 	})
 
 	bot.Handle(tele.OnDice, func(c tele.Context) error {

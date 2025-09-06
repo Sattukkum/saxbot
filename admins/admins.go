@@ -2,6 +2,7 @@ package admins
 
 import (
 	"log"
+	"saxbot/database"
 	"saxbot/environment"
 	"saxbot/redis"
 	"slices"
@@ -28,8 +29,7 @@ func BanUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember) {
 
 	existingData.Status = "banned"
 
-	redis.SetUser(user.User.ID, existingData)
-	redis.SetUserPersistent(user.User.ID, existingData)
+	database.SetUserPersistentWithSync(user.User.ID, existingData)
 	bot.Ban(chat, user)
 }
 
@@ -45,8 +45,7 @@ func MuteUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember) {
 	}
 
 	existingData.Status = "muted"
-	redis.SetUser(user.User.ID, existingData)
-	redis.SetUserPersistent(user.User.ID, existingData)
+	database.SetUserPersistentWithSync(user.User.ID, existingData)
 
 	user.Rights = tele.Rights{CanSendMessages: false}
 	bot.Restrict(chat, user)
@@ -57,8 +56,7 @@ func MuteUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember) {
 		userData, err := redis.GetUser(userID)
 		if err == nil {
 			userData.Status = "active"
-			redis.SetUser(userID, userData)
-			redis.SetUserPersistent(userID, userData)
+			database.SetUserPersistentWithSync(userID, userData)
 		}
 
 		unmuteUser := &tele.ChatMember{
@@ -86,8 +84,7 @@ func UnmuteUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember) {
 	}
 
 	existingData.Status = "active"
-	redis.SetUser(user.User.ID, existingData)
-	if err := redis.SetUserPersistent(user.User.ID, existingData); err != nil {
+	if err := database.SetUserPersistentWithSync(user.User.ID, existingData); err != nil {
 		log.Printf("UnmuteUser: Failed to save persistent data for user %d: %v", user.User.ID, err)
 	}
 	user.Rights = tele.Rights{
@@ -123,8 +120,7 @@ func SetPref(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, pref string)
 	}
 
 	existingData.IsWinner = true
-	redis.SetUser(user.User.ID, existingData)
-	if err := redis.SetUserPersistent(user.User.ID, existingData); err != nil {
+	if err := database.SetUserPersistentWithSync(user.User.ID, existingData); err != nil {
 		log.Printf("SetPref: Failed to save persistent data for user %d: %v", user.User.ID, err)
 		return
 	}
@@ -201,14 +197,13 @@ func SetPref(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, pref string)
 	}
 
 	// Обновляем данные в Redis после всех изменений
-	redis.SetUser(user.User.ID, existingData)
-	redis.SetUserPersistent(user.User.ID, existingData)
+	database.SetUserPersistentWithSync(user.User.ID, existingData)
 	log.Printf("SetPref: Final Redis update completed")
 }
 
 func RemovePref(bot *tele.Bot, chat *tele.Chat) {
-	// Получаем всех пользователей из Redis
-	allUsers, err := redis.GetAllUsers()
+	// Получаем всех пользователей с fallback на PostgreSQL
+	allUsers, err := database.GetAllUsersWithFallback()
 	if err != nil {
 		log.Printf("RemovePref: Error getting all users: %v", err)
 		return // Если не удалось получить пользователей, ничего не делаем
@@ -229,8 +224,7 @@ func RemovePref(bot *tele.Bot, chat *tele.Chat) {
 		member, err := bot.ChatMemberOf(chat, user)
 		if err != nil || member.Role != tele.Administrator {
 			// Если пользователь не админ, просто обновляем данные в Redis
-			redis.SetUser(userID, userData)
-			redis.SetUserPersistent(userID, userData)
+			database.SetUserPersistentWithSync(userID, userData)
 			log.Printf("RemovePref: User %d is not admin, updating data in Redis", userID)
 			continue
 		}
@@ -278,7 +272,6 @@ func RemovePref(bot *tele.Bot, chat *tele.Chat) {
 		}
 
 		// Обновляем данные в Redis
-		redis.SetUser(userID, userData)
-		redis.SetUserPersistent(userID, userData)
+		database.SetUserPersistentWithSync(userID, userData)
 	}
 }

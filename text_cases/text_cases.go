@@ -6,7 +6,7 @@ import (
 	"saxbot/environment"
 )
 
-var QuizAnnouncement = "Интерактив! Угадай песню по цитате! Кто первый даст правильный ответ, получит приз!\nОбращаю внимание, что название песни нужно писать без ошибок!"
+var QuizAnnouncement = "Интерактив! Угадай песню по цитате! Кто первый даст правильный ответ, получит приз!"
 
 func GetWarnCase(username string, lenaFlag bool) string {
 

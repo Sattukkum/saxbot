@@ -13,9 +13,17 @@ type MainEnvironment struct {
 	RedisPort    string
 	RedisDB      int
 	AllowedChats []int64
-	KatyaID      int64
 	Admins       []int64
 	QuizChatID   int64
+}
+
+type PostgreSQLEnvironment struct {
+	Host     string
+	Port     string
+	User     string
+	Password string
+	Database string
+	SSLMode  string
 }
 
 type DataEnvironment struct {
@@ -31,7 +39,6 @@ func GetMainEnvironment() MainEnvironment {
 	allowedChats := getAllowedChats()
 	admins := GetAdmins()
 	redisDB := getRedisDB()
-	katyaID := getKatyaID()
 	quizChatID := getQuizChatID()
 
 	return MainEnvironment{
@@ -40,7 +47,6 @@ func GetMainEnvironment() MainEnvironment {
 		RedisPort:    os.Getenv("REDIS_PORT"),
 		RedisDB:      redisDB,
 		AllowedChats: allowedChats,
-		KatyaID:      katyaID,
 		Admins:       admins,
 		QuizChatID:   quizChatID,
 	}
@@ -53,6 +59,47 @@ func GetDataEnvironment() DataEnvironment {
 		VkLink:      os.Getenv("VK_LINK"),
 		DonateLink:  os.Getenv("DONATE_LINK"),
 		BoostLink:   os.Getenv("BOOST_LINK"),
+	}
+}
+
+func GetPostgreSQLEnvironment() PostgreSQLEnvironment {
+	port := os.Getenv("POSTGRES_PORT")
+	if port == "" {
+		port = "5432"
+	}
+
+	host := os.Getenv("POSTGRES_HOST")
+	if host == "" {
+		host = "localhost"
+	}
+
+	user := os.Getenv("POSTGRES_USER")
+	if user == "" {
+		user = "saxbot"
+	}
+
+	database := os.Getenv("POSTGRES_DB")
+	if database == "" {
+		database = "saxbot"
+	}
+
+	sslmode := os.Getenv("POSTGRES_SSLMODE")
+	if sslmode == "" {
+		sslmode = "disable"
+	}
+
+	password := os.Getenv("POSTGRES_PASSWORD")
+	if password == "" {
+		panic("POSTGRES_PASSWORD environment variable is empty")
+	}
+
+	return PostgreSQLEnvironment{
+		Host:     host,
+		Port:     port,
+		User:     user,
+		Password: os.Getenv("POSTGRES_PASSWORD"),
+		Database: database,
+		SSLMode:  sslmode,
 	}
 }
 
@@ -110,16 +157,6 @@ func getRedisDB() int {
 		return 0
 	}
 	return redisDBInt
-}
-
-func getKatyaID() int64 {
-	katyaID := os.Getenv("KATYA_ID")
-	if katyaID == "" {
-		log.Printf("KATYA_ID environment variable is empty")
-		return 0
-	}
-	katyaIDInt, _ := strconv.ParseInt(strings.TrimSpace(katyaID), 10, 64)
-	return katyaIDInt
 }
 
 func getQuizChatID() int64 {
