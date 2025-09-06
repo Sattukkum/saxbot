@@ -235,6 +235,13 @@ func main() {
 		}
 
 		if userData.Status == "banned" {
+			// Проверяем, не является ли сообщение пересланным
+			// Если сообщение переслано, не разбаниваем автоматически
+			if c.Message().OriginalSender != nil || c.Message().OriginalChat != nil {
+				log.Printf("Получено пересланное сообщение от забаненного пользователя %d, автоматический разбан не выполняется", userID)
+				return nil
+			}
+
 			userData.Status = "active"
 			if err := database.SetUserPersistentWithSync(userID, userData); err != nil {
 				log.Printf("Failed to save persistent status update for user %d: %v", userID, err)
