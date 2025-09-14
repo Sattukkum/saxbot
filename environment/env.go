@@ -8,13 +8,14 @@ import (
 )
 
 type MainEnvironment struct {
-	Token        string
-	RedisHost    string
-	RedisPort    string
-	RedisDB      int
-	AllowedChats []int64
-	Admins       []int64
-	QuizChatID   int64
+	Token           string
+	RedisHost       string
+	RedisPort       string
+	RedisDB         int
+	AllowedChats    []int64
+	Admins          []int64
+	AdminsUsernames []string
+	QuizChatID      int64
 }
 
 type PostgreSQLEnvironment struct {
@@ -40,15 +41,17 @@ func GetMainEnvironment() MainEnvironment {
 	admins := GetAdmins()
 	redisDB := getRedisDB()
 	quizChatID := getQuizChatID()
+	adminUsernames := getAdminsUsernames()
 
 	return MainEnvironment{
-		Token:        os.Getenv("BOT_TOKEN"),
-		RedisHost:    os.Getenv("REDIS_HOST"),
-		RedisPort:    os.Getenv("REDIS_PORT"),
-		RedisDB:      redisDB,
-		AllowedChats: allowedChats,
-		Admins:       admins,
-		QuizChatID:   quizChatID,
+		Token:           os.Getenv("BOT_TOKEN"),
+		RedisHost:       os.Getenv("REDIS_HOST"),
+		RedisPort:       os.Getenv("REDIS_PORT"),
+		RedisDB:         redisDB,
+		AllowedChats:    allowedChats,
+		Admins:          admins,
+		AdminsUsernames: adminUsernames,
+		QuizChatID:      quizChatID,
 	}
 }
 
@@ -145,6 +148,16 @@ func GetAdmins() []int64 {
 	return adminInts64
 }
 
+func getAdminsUsernames() []string {
+	adminsUsernames := os.Getenv("ADMINS_USERNAMES")
+	if adminsUsernames == "" {
+		log.Println("ADMINS_USERNAMES environment variable is empty")
+		return []string{}
+	}
+	adminsUsernamesSlice := strings.Split(adminsUsernames, ",")
+	return adminsUsernamesSlice
+}
+
 func getRedisDB() int {
 	redisDB := os.Getenv("REDIS_DB")
 	if redisDB == "" {
@@ -163,7 +176,7 @@ func getQuizChatID() int64 {
 	quizChatID := os.Getenv("TARGET_CHAT")
 	if quizChatID == "" {
 		log.Printf("TARGET_CHAT environment variable is empty")
-		return int64(-1001673563051)
+		return 0
 	}
 	quizChatIDInt, _ := strconv.ParseInt(strings.TrimSpace(quizChatID), 10, 64)
 	return quizChatIDInt

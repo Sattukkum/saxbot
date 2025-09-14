@@ -343,17 +343,50 @@ func SetQuizAlreadyWas() error {
 	today := time.Now().In(moscowTZ)
 	date := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.UTC)
 
+	log.Printf("🎯 Attempting to mark quiz as completed for date: %s", date.Format("2006-01-02"))
+
 	// Находим квиз на сегодня и деактивируем его
-	result := DB.Model(&Quiz{}).Where("date = ?", date).Update("is_active", false)
+	result := DB.Model(&Quiz{}).Where("date = ? AND is_active = ?", date, true).Update("is_active", false)
 	if result.Error != nil {
+		log.Printf("❌ Failed to mark quiz as completed: %v", result.Error)
 		return fmt.Errorf("failed to mark quiz as completed: %v", result.Error)
 	}
 
 	if result.RowsAffected == 0 {
-		log.Printf("No quiz found for today to mark as completed")
+		log.Printf("⚠️  No active quiz found for today (%s) to mark as completed", date.Format("2006-01-02"))
+
+		// Проверим, есть ли вообще квиз на сегодня
+		var quiz Quiz
+		err := DB.Where("date = ?", date).First(&quiz).Error
+		if err == gorm.ErrRecordNotFound {
+			log.Printf("📅 No quiz exists for today - this might be normal if quiz wasn't created yet")
+		} else if err != nil {
+			log.Printf("❌ Error checking quiz existence: %v", err)
+		} else {
+			log.Printf("🔍 Quiz exists but is already inactive (is_active = %t)", quiz.IsActive)
+		}
 	} else {
-		log.Printf("Marked today's quiz as completed")
+		log.Printf("✅ Successfully marked today's quiz as completed (affected %d rows)", result.RowsAffected)
 	}
 
+	return nil
+}
+
+// ForceCompleteQuiz принудительно помечает сегодняшний квиз как завершенный
+func ForceCompleteQuiz() error {
+	moscowTZ := time.FixedZone("Moscow", 3*60*60)
+	today := time.Now().In(moscowTZ)
+	date := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.UTC)
+
+	log.Printf("🔧 Force completing quiz for date: %s", date.Format("2006-01-02"))
+
+	// Принудительно деактивируем квиз на сегодня
+	result := DB.Model(&Quiz{}).Where("date = ?", date).Update("is_active", false)
+	if result.Error != nil {
+		log.Printf("❌ Failed to force complete quiz: %v", result.Error)
+		return fmt.Errorf("failed to force complete quiz: %v", result.Error)
+	}
+
+	log.Printf("✅ Force completed quiz for today (affected %d rows)", result.RowsAffected)
 	return nil
 }

@@ -96,13 +96,6 @@ func GetNewQuiz() (todayQuiz QuoteQuiz) {
 		log.Printf("Очищен флаг 'квиз уже был' для нового дня")
 	}
 
-	// Сбрасываем статус победителей у всех пользователей для нового квиза
-	if err := database.ResetAllUsersWinnerStatusWithSync(); err != nil {
-		log.Printf("Ошибка сброса статуса победителей: %v", err)
-	} else {
-		log.Printf("Сброшен статус победителей для нового квиза")
-	}
-
 	todayQuiz = GetTodayQuiz()
 
 	log.Printf("Generated quiz: Quote='%s', SongName='%s', Time=%s", todayQuiz.Quote, todayQuiz.SongName, todayQuiz.QuizTime.Format("15:04"))

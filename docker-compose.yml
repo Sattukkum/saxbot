@@ -47,7 +47,7 @@ services:
     environment:
       - BOT_TOKEN=${BOT_TOKEN}
       - ALLOWED_CHATS=${ALLOWED_CHATS}
-      - KATYA_ID=${KATYA_ID}
+      - TARGET_CHAT=${TARGET_CHAT}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=0
@@ -58,6 +58,7 @@ services:
       - POSTGRES_DB=saxbot
       - POSTGRES_SSLMODE=disable
       - ADMINS=${ADMINS}
+      - ADMINS_USERNAMES=${ADMINS_USERNAMES}
       - YANDEX_LINK=${YANDEX_LINK}
       - YOUTUBE_LINK=${YOUTUBE_LINK}
       - VK_LINK=${VK_LINK}

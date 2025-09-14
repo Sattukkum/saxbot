@@ -35,6 +35,17 @@ func main() {
 	redisPort := mainEnv.RedisPort
 	// redisDB := mainEnv.RedisDB
 	quizChatID := mainEnv.QuizChatID
+	adminsUsernames := mainEnv.AdminsUsernames
+
+	if quizChatID == 0 {
+		panic("TARGET_CHAT is not set")
+	}
+	if botToken == "" {
+		panic("BOT_TOKEN is not set")
+	}
+	if allowedChats == nil {
+		panic("ALLOWED_CHATS is not set")
+	}
 
 	// Флаги командной строки
 	clearRedis := flag.Bool("clear-redis", false, "Очистить базу данных Redis и выйти")
@@ -346,9 +357,9 @@ func main() {
 			return messages.SendMessage(c, text, messageThreadID)
 		case "Админ", "админ", "/report":
 			if isReply {
-				return messages.ReplyToOriginalMessage(c, fmt.Sprintf("@%s вызывает админов. В чатике дичь\n@fatiurs, @puwyb, @murmuIlya, @RavenMxL", userData.Username), messageThreadID)
+				return messages.ReplyToOriginalMessage(c, textcases.GetAdminsCommand(userData.Username, adminsUsernames), messageThreadID)
 			} else {
-				return messages.SendMessage(c, fmt.Sprintf("@%s вызывает админов. В чатике дичь\n@fatiurs, @puwyb, @murmuIlya, @RavenMxL", userData.Username), messageThreadID)
+				return messages.SendMessage(c, textcases.GetAdminsCommand(userData.Username, adminsUsernames), messageThreadID)
 			}
 		case "Преды", "преды", "/warns":
 			switch {
