@@ -1,6 +1,6 @@
 # SaxBot
 
-Telegram бот для чата исполнителя Nick Sax
+Telegram бот для чата исполнителя Nick Sax https://t.me/kpsspunk
 
 ## Требования
 
