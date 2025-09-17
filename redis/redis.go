@@ -19,15 +19,14 @@ var (
 	ctx    = context.Background()
 )
 
-// InitRedis инициализирует подключение к Redis
+// Инициализация подключения к Redis
 func InitRedis(addr, password string, db int) error {
 	Client = redis.NewClient(&redis.Options{
-		Addr:     addr,     // localhost:6379
-		Password: password, // пароль, если есть
-		DB:       db,       // номер базы данных
+		Addr:     addr,
+		Password: password,
+		DB:       db,
 	})
 
-	// Проверяем подключение
 	_, err := Client.Ping(ctx).Result()
 	if err != nil {
 		return fmt.Errorf("failed to connect to Redis: %v", err)
@@ -37,7 +36,7 @@ func InitRedis(addr, password string, db int) error {
 	return nil
 }
 
-// CloseRedis закрывает подключение к Redis
+// Закрыть подключение к Redis
 func CloseRedis() error {
 	if Client != nil {
 		return Client.Close()
@@ -45,12 +44,12 @@ func CloseRedis() error {
 	return nil
 }
 
-// SetWithExpiration устанавливает значение с временем жизни
+// Устаонвить значение с TTL
 func SetWithExpiration(key string, value any, expiration time.Duration) error {
 	return Client.Set(ctx, key, value, expiration).Err()
 }
 
-// Get получает значение по ключу
+// Получить значение по ключу
 func Get(key string) (string, error) {
 	val, err := Client.Get(ctx, key).Result()
 	if err == redis.Nil {
@@ -59,112 +58,68 @@ func Get(key string) (string, error) {
 	return val, err
 }
 
-// Delete удаляет ключ
+// Удалить ключ
 func Delete(key string) error {
 	return Client.Del(ctx, key).Err()
 }
 
-// Exists проверяет существование ключа
+// Проверить существование ключа
 func Exists(key string) (bool, error) {
 	val, err := Client.Exists(ctx, key).Result()
 	return val > 0, err
 }
 
-// Increment увеличивает числовое значение на 1
+// Увеличить числовое значение на 1
 func Increment(key string) (int64, error) {
 	return Client.Incr(ctx, key).Result()
 }
 
-// IncrementBy увеличивает числовое значение на указанное число
+// Увеличить числовое значение на указанное число
 func IncrementBy(key string, value int64) (int64, error) {
 	return Client.IncrBy(ctx, key, value).Result()
 }
 
-// SetExpiration устанавливает время жизни для существующего ключа
+// Установить время жизни для существующего ключа
 func SetExpiration(key string, expiration time.Duration) error {
 	return Client.Expire(ctx, key, expiration).Err()
 }
 
-// GetTTL получает оставшееся время жизни ключа
+// Получить оставшееся время жизни ключа
 func GetTTL(key string) (time.Duration, error) {
 	return Client.TTL(ctx, key).Result()
 }
 
-// GetUser получает данные пользователя из Redis с fallback на PostgreSQL
+// Получить данные пользователя
 func GetUser(userID int64) (*UserData, error) {
-	// Используем функцию с fallback логикой
-	return GetUserWithFallback(userID)
-}
-
-// GetUserSafe получает данные пользователя без создания нового
-// Возвращает (userData, isNewUser, error)
-// isNewUser = true только если пользователь действительно не найден
-// isNewUser = false если произошла ошибка или пользователь существует
-func GetUserSafe(userID int64) (*UserData, bool, error) {
-	// Сначала ищем в Redis
 	key := fmt.Sprintf("user:%d", userID)
 	val, err := Client.Get(ctx, key).Result()
-	if err == nil {
-		// Данные найдены в Redis
-		var userData UserData
-		err = json.Unmarshal([]byte(val), &userData)
-		if err != nil {
-			return nil, false, fmt.Errorf("failed to unmarshal user data from Redis: %v", err)
-		}
-
-		// Проверяем и обновляем админский статус
+	if err != nil {
+		return &UserData{}, err
+	}
+	var userData UserData
+	err = json.Unmarshal([]byte(val), &userData)
+	if err != nil {
+		log.Printf("Failed to unmarshal user data from Redis: %v", err)
+		return &UserData{}, err
+	} else {
 		if UpdateUserAdminStatus(userID, &userData) {
-			// Если статус изменился, сохраняем обновленные данные
 			SetUser(userID, &userData)
 		}
-
-		return &userData, false, nil
+		return &userData, nil
 	}
-
-	if err != redis.Nil {
-		// Ошибка Redis - не создаем нового пользователя
-		log.Printf("Redis error when getting user %d: %v", userID, err)
-		return nil, false, err
-	}
-
-	// Если не найдены в Redis, пробуем PostgreSQL
-	pgUser, err := getFromPostgreSQL(userID)
-	if err != nil {
-		log.Printf("Failed to get user %d from PostgreSQL: %v", userID, err)
-	} else if pgUser != nil {
-		// Конвертируем из PostgreSQL структуры в Redis структуру
-		userData := &UserData{
-			Username:  pgUser.Username,
-			IsAdmin:   pgUser.IsAdmin,
-			Warns:     pgUser.Warns,
-			Status:    pgUser.Status,
-			IsWinner:  pgUser.IsWinner,
-			AdminPref: pgUser.AdminPref,
-		}
-
-		// Сохраняем в Redis для быстрого доступа в будущем
-		SetUser(userID, userData)
-
-		return userData, false, nil
-	}
-
-	// Пользователь действительно не найден ни в Redis, ни в PostgreSQL
-	log.Printf("User %d truly not found in any storage - can create new", userID)
-	return nil, true, nil
 }
 
-// SetUser сохраняет данные пользователя в Redis с TTL 30 минут
+// Сохранить данные пользователя
 func SetUser(userID int64, userData *UserData) error {
 	key := fmt.Sprintf("user:%d", userID)
 	data, err := json.Marshal(userData)
 	if err != nil {
 		return fmt.Errorf("failed to marshal user data: %v", err)
 	}
-	// Устанавливаем TTL 30 минут для хранения в оперативной памяти
 	return Client.Set(ctx, key, data, 30*time.Minute).Err()
 }
 
-// UpdateUserWarns обновляет количество предупреждений пользователя
+// Обновить количество предупреждений пользователя
 func UpdateUserWarns(userID int64, delta int) error {
 	userData, err := GetUser(userID)
 	if err != nil {
@@ -175,11 +130,10 @@ func UpdateUserWarns(userID int64, delta int) error {
 		userData.Warns = 0
 	}
 
-	// Сохраняем только в память (с TTL)
 	return SetUser(userID, userData)
 }
 
-// UpdateUserAdminStatus обновляет админский статус пользователя на основе переменной окружения ADMINS
+// Обновить админский статус пользователя на основе переменной окружения ADMINS. При изменении статуса - true
 func UpdateUserAdminStatus(userID int64, userData *UserData) bool {
 	admins := environment.GetAdmins()
 	if len(admins) == 0 {
@@ -190,16 +144,15 @@ func UpdateUserAdminStatus(userID int64, userData *UserData) bool {
 	if userData.IsAdmin != newAdminStatus {
 		log.Printf("Updating admin status for user %d: %t -> %t", userID, userData.IsAdmin, newAdminStatus)
 		userData.IsAdmin = newAdminStatus
-		return true // Статус изменился
+		return true
 	}
-	return false // Статус не изменился
+	return false
 }
 
-// RefreshAllUsersAdminStatus обновляет админский статус для всех пользователей в Redis
+// Обновить админский статус для всех пользователей в Redis
 func RefreshAllUsersAdminStatus() error {
 	log.Printf("Starting admin status refresh for users in Redis...")
 
-	// Получаем все ключи пользователей в Redis
 	keys, err := Client.Keys(ctx, "user:*").Result()
 	if err != nil {
 		return fmt.Errorf("failed to get user keys: %v", err)
@@ -207,7 +160,6 @@ func RefreshAllUsersAdminStatus() error {
 
 	updatedCount := 0
 	for _, key := range keys {
-		// Извлекаем userID из ключа (формат: user:123456)
 		parts := strings.Split(key, ":")
 		if len(parts) != 2 {
 			continue
@@ -219,7 +171,6 @@ func RefreshAllUsersAdminStatus() error {
 			continue
 		}
 
-		// Получаем данные пользователя
 		val, err := Client.Get(ctx, key).Result()
 		if err != nil {
 			log.Printf("Failed to get user data for %d: %v", userID, err)
@@ -233,9 +184,7 @@ func RefreshAllUsersAdminStatus() error {
 			continue
 		}
 
-		// Обновляем админский статус
 		if UpdateUserAdminStatus(userID, &userData) {
-			// Сохраняем обновленные данные в Redis
 			err = SetUser(userID, &userData)
 			if err != nil {
 				log.Printf("Failed to save updated user data for %d: %v", userID, err)
@@ -250,17 +199,17 @@ func RefreshAllUsersAdminStatus() error {
 	return nil
 }
 
-// FlushAll очищает всю базу данных Redis
+// Очистить всю базу данных Redis
 func FlushAll() error {
 	return Client.FlushAll(ctx).Err()
 }
 
-// GetAllKeys получает все ключи из базы данных
+// Получить все ключи из Redis
 func GetAllKeys() ([]string, error) {
 	return Client.Keys(ctx, "*").Result()
 }
 
-// GetAllUsers получает всех пользователей из базы данных
+// Получить всех пользователей из Redis
 func GetAllUsers() (map[int64]*UserData, error) {
 	keys, err := Client.Keys(ctx, "user:*").Result()
 	if err != nil {
@@ -269,16 +218,15 @@ func GetAllUsers() (map[int64]*UserData, error) {
 
 	users := make(map[int64]*UserData)
 	for _, key := range keys {
-		// Извлекаем userID из ключа "user:123"
 		userIDStr := strings.TrimPrefix(key, "user:")
 		userID, err := strconv.ParseInt(userIDStr, 10, 64)
 		if err != nil {
-			continue // Пропускаем некорректные ключи
+			continue
 		}
 
 		userData, err := GetUser(userID)
 		if err != nil {
-			continue // Пропускаем пользователей с ошибками
+			continue
 		}
 
 		users[userID] = userData
@@ -287,14 +235,13 @@ func GetAllUsers() (map[int64]*UserData, error) {
 	return users, nil
 }
 
-// GetDatabaseInfo получает информацию о базе данных
+// Получить информацию о базе данных Redis
 func GetDatabaseInfo() (map[string]string, error) {
 	info, err := Client.Info(ctx).Result()
 	if err != nil {
 		return nil, err
 	}
 
-	// Парсим основную информацию
 	result := make(map[string]string)
 	keys, _ := GetAllKeys()
 	result["total_keys"] = fmt.Sprintf("%d", len(keys))
@@ -303,9 +250,8 @@ func GetDatabaseInfo() (map[string]string, error) {
 	return result, nil
 }
 
-// CleanupExpiredKeys принудительно удаляет истекшие ключи для освобождения памяти
+// Удалить истекшие ключи
 func CleanupExpiredKeys() error {
-	// Получаем все ключи с TTL
 	keys, err := Client.Keys(ctx, "user:*").Result()
 	if err != nil {
 		return err
@@ -317,7 +263,6 @@ func CleanupExpiredKeys() error {
 		if err != nil {
 			continue
 		}
-		// Если TTL истек (отрицательное значение), удаляем ключ
 		if ttl < 0 {
 			Client.Del(ctx, key)
 			expiredCount++
@@ -328,7 +273,7 @@ func CleanupExpiredKeys() error {
 	return nil
 }
 
-// GetMemoryStats получает статистику использования памяти
+// Получить статистику использования памяти Redis
 func GetMemoryStats() (map[string]any, error) {
 	info, err := Client.Info(ctx, "memory").Result()
 	if err != nil {
@@ -346,7 +291,6 @@ func GetMemoryStats() (map[string]any, error) {
 		}
 	}
 
-	// Добавляем количество ключей разных типов
 	userKeys, _ := Client.Keys(ctx, "user:*").Result()
 	quizKeys, _ := Client.Keys(ctx, "quiz_*").Result()
 	stats["user_keys_count"] = len(userKeys)
@@ -355,7 +299,7 @@ func GetMemoryStats() (map[string]any, error) {
 	return stats, nil
 }
 
-// SaveQuizTime сохраняет время квиза на сегодня в Redis
+// Сохранить сегодняшнее время квиза в Redis
 func SaveQuizTime(quizTime time.Time) error {
 	// Используем московское время (UTC+3)
 	moscowTZ := time.FixedZone("Moscow", 3*60*60)
@@ -363,17 +307,15 @@ func SaveQuizTime(quizTime time.Time) error {
 	today := now.Format("2006-01-02")
 	key := fmt.Sprintf("quiz_time:%s", today)
 
-	// Сохраняем время в формате RFC3339 для точности
 	timeStr := quizTime.Format(time.RFC3339)
 
-	// Устанавливаем TTL до конца дня + 1 час (чтобы не потерять данные на границе дней)
 	endOfDay := time.Date(now.Year(), now.Month(), now.Day()+1, 1, 0, 0, 0, moscowTZ)
 	ttl := endOfDay.Sub(now)
 
 	return Client.Set(ctx, key, timeStr, ttl).Err()
 }
 
-// LoadQuizTime загружает время квиза на сегодня из Redis
+// Получить сегодняшнее время квиза из Redis
 func LoadQuizTime() (time.Time, error) {
 	// Используем московское время (UTC+3)
 	moscowTZ := time.FixedZone("Moscow", 3*60*60)
@@ -388,7 +330,6 @@ func LoadQuizTime() (time.Time, error) {
 		return time.Time{}, err
 	}
 
-	// Парсим время из RFC3339 формата
 	quizTime, err := time.Parse(time.RFC3339, val)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("failed to parse quiz time: %v", err)
@@ -397,7 +338,7 @@ func LoadQuizTime() (time.Time, error) {
 	return quizTime, nil
 }
 
-// SetQuizAlreadyWas устанавливает флаг, что квиз сегодня уже был
+// Установить флаг, что квиз сегодня уже был
 func SetQuizAlreadyWas() error {
 	// Используем московское время (UTC+3)
 	moscowTZ := time.FixedZone("Moscow", 3*60*60)
@@ -405,14 +346,13 @@ func SetQuizAlreadyWas() error {
 	today := now.Format("2006-01-02")
 	key := fmt.Sprintf("quiz_was:%s", today)
 
-	// Устанавливаем TTL до конца дня + 1 час (чтобы не потерять данные на границе дней)
 	endOfDay := time.Date(now.Year(), now.Month(), now.Day()+1, 1, 0, 0, 0, moscowTZ)
 	ttl := endOfDay.Sub(now)
 
 	return Client.Set(ctx, key, "true", ttl).Err()
 }
 
-// GetQuizAlreadyWas проверяет, был ли квиз сегодня уже
+// Проверить, был ли квиз сегодня проведен. Если был - true
 func GetQuizAlreadyWas() (bool, error) {
 	// Используем московское время (UTC+3)
 	moscowTZ := time.FixedZone("Moscow", 3*60*60)
@@ -421,7 +361,7 @@ func GetQuizAlreadyWas() (bool, error) {
 
 	val, err := Client.Get(ctx, key).Result()
 	if err == redis.Nil {
-		return false, nil // Квиза сегодня еще не было
+		return false, nil
 	}
 	if err != nil {
 		return false, err
@@ -430,7 +370,7 @@ func GetQuizAlreadyWas() (bool, error) {
 	return val == "true", nil
 }
 
-// ClearQuizAlreadyWas очищает флаг, что квиз сегодня уже был
+// Очистить флаг, что квиз сегодня уже был
 func ClearQuizAlreadyWas() error {
 	// Используем московское время (UTC+3)
 	moscowTZ := time.FixedZone("Moscow", 3*60*60)
@@ -440,14 +380,7 @@ func ClearQuizAlreadyWas() error {
 	return Client.Del(ctx, key).Err()
 }
 
-// QuizData структура для сохранения полных данных квиза
-type QuizData struct {
-	Quote    string    `json:"quote"`
-	SongName string    `json:"song_name"`
-	QuizTime time.Time `json:"quiz_time"`
-}
-
-// SaveQuizData сохраняет полные данные квиза на сегодня в Redis
+// Сохранить полные данные сегодняшнего квиза в Redis
 func SaveQuizData(quote, songName string, quizTime time.Time) error {
 	// Используем московское время (UTC+3)
 	moscowTZ := time.FixedZone("Moscow", 3*60*60)
@@ -466,14 +399,13 @@ func SaveQuizData(quote, songName string, quizTime time.Time) error {
 		return fmt.Errorf("failed to marshal quiz data: %v", err)
 	}
 
-	// Устанавливаем TTL до конца дня + 1 час
 	endOfDay := time.Date(now.Year(), now.Month(), now.Day()+1, 1, 0, 0, 0, moscowTZ)
 	ttl := endOfDay.Sub(now)
 
 	return Client.Set(ctx, key, data, ttl).Err()
 }
 
-// LoadQuizData загружает полные данные квиза на сегодня из Redis
+// Загрузить полные данные сегодняшнего квиза из Redis
 func LoadQuizData() (string, string, time.Time, error) {
 	// Используем московское время (UTC+3)
 	moscowTZ := time.FixedZone("Moscow", 3*60*60)
@@ -497,7 +429,7 @@ func LoadQuizData() (string, string, time.Time, error) {
 	return quizData.Quote, quizData.SongName, quizData.QuizTime, nil
 }
 
-// ResetAllUsersWinnerStatus сбрасывает состояние IsWinner в false у всех пользователей в Redis
+// Сбросить состояние IsWinner в false у всех пользователей в Redis
 func ResetAllUsersWinnerStatus() error {
 	log.Printf("Starting winner status reset for users in Redis...")
 
@@ -509,7 +441,6 @@ func ResetAllUsersWinnerStatus() error {
 
 	updatedCount := 0
 	for _, key := range keys {
-		// Извлекаем userID из ключа (формат: user:123456)
 		parts := strings.Split(key, ":")
 		if len(parts) != 2 {
 			continue
@@ -521,7 +452,6 @@ func ResetAllUsersWinnerStatus() error {
 			continue
 		}
 
-		// Получаем данные пользователя
 		val, err := Client.Get(ctx, key).Result()
 		if err != nil {
 			log.Printf("Failed to get user data for %d: %v", userID, err)
@@ -535,11 +465,9 @@ func ResetAllUsersWinnerStatus() error {
 			continue
 		}
 
-		// Проверяем, нужно ли обновлять IsWinner
 		if userData.IsWinner {
 			userData.IsWinner = false
 
-			// Сохраняем обновленные данные в Redis
 			err = SetUser(userID, &userData)
 			if err != nil {
 				log.Printf("Failed to save updated user data for %d: %v", userID, err)

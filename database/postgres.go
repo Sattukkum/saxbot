@@ -13,7 +13,7 @@ var (
 	DB *gorm.DB
 )
 
-// InitPostgreSQL инициализирует подключение к PostgreSQL
+// Инициализировать подключение к PostgreSQL
 func InitPostgreSQL(host, user, password, dbname string, port int, sslmode string) error {
 	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%d sslmode=%s TimeZone=Europe/Moscow",
 		host, user, password, dbname, port, sslmode)
@@ -26,7 +26,6 @@ func InitPostgreSQL(host, user, password, dbname string, port int, sslmode strin
 		return fmt.Errorf("failed to connect to PostgreSQL: %v", err)
 	}
 
-	// Проверяем подключение
 	sqlDB, err := DB.DB()
 	if err != nil {
 		return fmt.Errorf("failed to get SQL DB instance: %v", err)
@@ -41,7 +40,7 @@ func InitPostgreSQL(host, user, password, dbname string, port int, sslmode strin
 	return nil
 }
 
-// ClosePostgreSQL закрывает подключение к PostgreSQL
+// Закрыть подключение к PostgreSQL
 func ClosePostgreSQL() error {
 	if DB != nil {
 		sqlDB, err := DB.DB()
@@ -53,7 +52,7 @@ func ClosePostgreSQL() error {
 	return nil
 }
 
-// AutoMigrate выполняет автоматическую миграцию всех моделей
+// Выполнить автоматическую миграцию всех моделей
 func AutoMigrate() error {
 	log.Println("Starting database migration...")
 
@@ -69,11 +68,10 @@ func AutoMigrate() error {
 	return nil
 }
 
-// GetDatabaseStats возвращает статистику базы данных
+// Получить статистику базы данных
 func GetDatabaseStats() (map[string]interface{}, error) {
 	stats := make(map[string]interface{})
 
-	// Получаем количество пользователей
 	var userCount int64
 	err := DB.Model(&User{}).Count(&userCount).Error
 	if err != nil {
@@ -81,7 +79,6 @@ func GetDatabaseStats() (map[string]interface{}, error) {
 	}
 	stats["total_users"] = userCount
 
-	// Получаем количество активных пользователей
 	var activeUserCount int64
 	err = DB.Model(&User{}).Where("status = ?", "active").Count(&activeUserCount).Error
 	if err != nil {
@@ -89,7 +86,6 @@ func GetDatabaseStats() (map[string]interface{}, error) {
 	}
 	stats["active_users"] = activeUserCount
 
-	// Получаем количество админов
 	var adminCount int64
 	err = DB.Model(&User{}).Where("is_admin = ?", true).Count(&adminCount).Error
 	if err != nil {
@@ -97,7 +93,6 @@ func GetDatabaseStats() (map[string]interface{}, error) {
 	}
 	stats["admin_users"] = adminCount
 
-	// Получаем количество квизов
 	var quizCount int64
 	err = DB.Model(&Quiz{}).Count(&quizCount).Error
 	if err != nil {
@@ -105,7 +100,6 @@ func GetDatabaseStats() (map[string]interface{}, error) {
 	}
 	stats["total_quizzes"] = quizCount
 
-	// Получаем количество активных квизов
 	var activeQuizCount int64
 	err = DB.Model(&Quiz{}).Where("is_active = ?", true).Count(&activeQuizCount).Error
 	if err != nil {
@@ -116,7 +110,7 @@ func GetDatabaseStats() (map[string]interface{}, error) {
 	return stats, nil
 }
 
-// HealthCheck проверяет состояние подключения к базе данных
+// Проверить состояние подключения к базе данных
 func HealthCheck() error {
 	if DB == nil {
 		return fmt.Errorf("database connection is nil")
@@ -135,7 +129,7 @@ func HealthCheck() error {
 	return nil
 }
 
-// SetConnectionPool настраивает пул соединений
+// Настроить пул соединений
 func SetConnectionPool(maxIdleConns, maxOpenConns int) error {
 	if DB == nil {
 		return fmt.Errorf("database connection is nil")
@@ -146,10 +140,8 @@ func SetConnectionPool(maxIdleConns, maxOpenConns int) error {
 		return fmt.Errorf("failed to get SQL DB instance: %v", err)
 	}
 
-	// Устанавливаем максимальное количество неактивных соединений
 	sqlDB.SetMaxIdleConns(maxIdleConns)
 
-	// Устанавливаем максимальное количество открытых соединений
 	sqlDB.SetMaxOpenConns(maxOpenConns)
 
 	log.Printf("Connection pool configured: MaxIdleConns=%d, MaxOpenConns=%d", maxIdleConns, maxOpenConns)

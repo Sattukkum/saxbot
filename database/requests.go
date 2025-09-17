@@ -11,9 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// ========== USER OPERATIONS ==========
-
-// GetUser получает пользователя по Telegram UserID, создает нового если не найден
+// Получить пользователя по Telegram UserID, создает нового если не найден
 func GetUser(userID int64) (*User, error) {
 	var user User
 	err := DB.Where("user_id = ?", userID).First(&user).Error
@@ -56,35 +54,12 @@ func GetUser(userID int64) (*User, error) {
 	return &user, nil
 }
 
-// GetUserSafe получает пользователя без создания нового при отсутствии
-func GetUserSafe(userID int64) (*User, bool, error) {
-	var user User
-	err := DB.Where("user_id = ?", userID).First(&user).Error
-
-	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return nil, true, nil // isNewUser = true
-		}
-		return nil, false, fmt.Errorf("failed to get user: %v", err)
-	}
-
-	// Проверяем и обновляем админский статус
-	if updateUserAdminStatus(userID, &user) {
-		err = DB.Save(&user).Error
-		if err != nil {
-			log.Printf("Failed to update admin status for user %d: %v", userID, err)
-		}
-	}
-
-	return &user, false, nil
-}
-
-// SaveUser сохраняет пользователя в базе данных
+// Сохранить пользователя в базе данных
 func SaveUser(user *User) error {
 	return DB.Save(user).Error
 }
 
-// UpdateUserWarns обновляет количество предупреждений пользователя
+// Обновить количество предупреждений пользователя
 func UpdateUserWarns(userID int64, delta int) error {
 	user, err := GetUser(userID)
 	if err != nil {
@@ -99,7 +74,7 @@ func UpdateUserWarns(userID int64, delta int) error {
 	return DB.Save(user).Error
 }
 
-// updateUserAdminStatus обновляет админский статус пользователя на основе переменной окружения ADMINS
+// Обновить админский статус пользователя на основе переменной окружения ADMINS
 func updateUserAdminStatus(userID int64, user *User) bool {
 	admins := environment.GetAdmins()
 	if len(admins) == 0 {
@@ -110,12 +85,12 @@ func updateUserAdminStatus(userID int64, user *User) bool {
 	if user.IsAdmin != newAdminStatus {
 		log.Printf("Updating admin status for user %d: %t -> %t", userID, user.IsAdmin, newAdminStatus)
 		user.IsAdmin = newAdminStatus
-		return true // Статус изменился
+		return true
 	}
-	return false // Статус не изменился
+	return false
 }
 
-// RefreshAllUsersAdminStatus обновляет админский статус для всех пользователей
+// Обновить админский статус для всех пользователей
 func RefreshAllUsersAdminStatus() error {
 	log.Printf("Starting admin status refresh for all users...")
 
@@ -141,7 +116,7 @@ func RefreshAllUsersAdminStatus() error {
 	return nil
 }
 
-// ResetAllUsersWinnerStatus сбрасывает состояние IsWinner в false у всех пользователей
+// Сбросить состояние IsWinner в false у всех пользователей
 func ResetAllUsersWinnerStatus() error {
 	log.Printf("Starting winner status reset for all users...")
 
@@ -154,7 +129,7 @@ func ResetAllUsersWinnerStatus() error {
 	return nil
 }
 
-// GetAllUsers получает всех пользователей из базы данных
+// Получить всех пользователей из базы данных
 func GetAllUsers() ([]User, error) {
 	var users []User
 	err := DB.Find(&users).Error
@@ -164,16 +139,12 @@ func GetAllUsers() ([]User, error) {
 	return users, nil
 }
 
-// ========== QUIZ OPERATIONS ==========
-
-// SaveQuizData сохраняет данные квиза на определенную дату
+// Сохранить данные квиза на определенную дату
 func SaveQuizData(quote, songName string, quizTime time.Time) error {
-	// Нормализуем дату (убираем время)
 	moscowTZ := time.FixedZone("Moscow", 3*60*60)
 	quizTimeInMoscow := quizTime.In(moscowTZ)
 	date := time.Date(quizTimeInMoscow.Year(), quizTimeInMoscow.Month(), quizTimeInMoscow.Day(), 0, 0, 0, 0, time.UTC)
 
-	// Проверяем, есть ли уже квиз на эту дату
 	var existingQuiz Quiz
 	err := DB.Where("date = ?", date).First(&existingQuiz).Error
 
@@ -182,7 +153,6 @@ func SaveQuizData(quote, songName string, quizTime time.Time) error {
 	}
 
 	if err == gorm.ErrRecordNotFound {
-		// Создаем новый квиз
 		quiz := Quiz{
 			Date:     date,
 			Quote:    quote,
@@ -198,7 +168,6 @@ func SaveQuizData(quote, songName string, quizTime time.Time) error {
 
 		log.Printf("Created new quiz for date %s", date.Format("2006-01-02"))
 	} else {
-		// Обновляем существующий квиз
 		existingQuiz.Quote = quote
 		existingQuiz.SongName = songName
 		existingQuiz.QuizTime = quizTimeInMoscow
@@ -215,7 +184,7 @@ func SaveQuizData(quote, songName string, quizTime time.Time) error {
 	return nil
 }
 
-// LoadQuizData загружает данные квиза на сегодня
+// Получить данные квиза на сегодня
 func LoadQuizData() (string, string, time.Time, error) {
 	moscowTZ := time.FixedZone("Moscow", 3*60*60)
 	today := time.Now().In(moscowTZ)
@@ -234,9 +203,8 @@ func LoadQuizData() (string, string, time.Time, error) {
 	return quiz.Quote, quiz.SongName, quiz.QuizTime, nil
 }
 
-// GetQuizByDate получает квиз по дате
+// Получить квиз по дате
 func GetQuizByDate(date time.Time) (*Quiz, error) {
-	// Нормализуем дату
 	normalizedDate := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.UTC)
 
 	var quiz Quiz
@@ -244,7 +212,7 @@ func GetQuizByDate(date time.Time) (*Quiz, error) {
 
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return nil, nil // Квиз не найден, но это не ошибка
+			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to get quiz by date: %v", err)
 	}
@@ -252,7 +220,7 @@ func GetQuizByDate(date time.Time) (*Quiz, error) {
 	return &quiz, nil
 }
 
-// GetActiveQuizzes получает все активные квизы
+// Получить все активные квизы
 func GetActiveQuizzes() ([]Quiz, error) {
 	var quizzes []Quiz
 	err := DB.Where("is_active = ?", true).Order("date DESC").Find(&quizzes).Error
@@ -262,7 +230,7 @@ func GetActiveQuizzes() ([]Quiz, error) {
 	return quizzes, nil
 }
 
-// DeactivateQuiz деактивирует квиз
+// Завершить квиз
 func DeactivateQuiz(quizID uint) error {
 	result := DB.Model(&Quiz{}).Where("id = ?", quizID).Update("is_active", false)
 	if result.Error != nil {
@@ -274,16 +242,14 @@ func DeactivateQuiz(quizID uint) error {
 	return nil
 }
 
-// ========== UTILITY FUNCTIONS ==========
-
-// GetUserByUsername получает пользователя по username
+// Получить пользователя по username
 func GetUserByUsername(username string) (*User, error) {
 	var user User
 	err := DB.Where("username = ?", username).First(&user).Error
 
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return nil, nil // Пользователь не найден, но это не ошибка
+			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to get user by username: %v", err)
 	}
@@ -291,7 +257,7 @@ func GetUserByUsername(username string) (*User, error) {
 	return &user, nil
 }
 
-// UpdateUsername обновляет username пользователя
+// Обновить username пользователя
 func UpdateUsername(userID int64, username string) error {
 	result := DB.Model(&User{}).Where("user_id = ?", userID).Update("username", username)
 	if result.Error != nil {
@@ -303,7 +269,7 @@ func UpdateUsername(userID int64, username string) error {
 	return nil
 }
 
-// SetUserWinnerStatus устанавливает статус победителя для пользователя
+// Установить статус победителя для пользователя
 func SetUserWinnerStatus(userID int64, isWinner bool) error {
 	result := DB.Model(&User{}).Where("user_id = ?", userID).Update("is_winner", isWinner)
 	if result.Error != nil {
@@ -315,9 +281,7 @@ func SetUserWinnerStatus(userID int64, isWinner bool) error {
 	return nil
 }
 
-// ========== QUIZ STATUS OPERATIONS ==========
-
-// GetQuizAlreadyWas проверяет по PostgreSQL, был ли квиз сегодня уже проведен
+// Проверить, был ли квиз сегодня уже проведен
 func GetQuizAlreadyWas() (bool, error) {
 	moscowTZ := time.FixedZone("Moscow", 3*60*60)
 	today := time.Now().In(moscowTZ)
@@ -328,65 +292,61 @@ func GetQuizAlreadyWas() (bool, error) {
 
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return false, nil // Квиз не найден = не проводился
+			return false, nil
 		}
 		return false, fmt.Errorf("failed to check quiz status: %v", err)
 	}
 
-	// Если квиз неактивен, значит он уже был проведен и завершен
 	return !quiz.IsActive, nil
 }
 
-// SetQuizAlreadyWas помечает квиз как завершенный (деактивирует его)
+// Пометить квиз как завершенный
 func SetQuizAlreadyWas() error {
 	moscowTZ := time.FixedZone("Moscow", 3*60*60)
 	today := time.Now().In(moscowTZ)
 	date := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.UTC)
 
-	log.Printf("🎯 Attempting to mark quiz as completed for date: %s", date.Format("2006-01-02"))
+	log.Printf("Attempting to mark quiz as completed for date: %s", date.Format("2006-01-02"))
 
-	// Находим квиз на сегодня и деактивируем его
 	result := DB.Model(&Quiz{}).Where("date = ? AND is_active = ?", date, true).Update("is_active", false)
 	if result.Error != nil {
-		log.Printf("❌ Failed to mark quiz as completed: %v", result.Error)
+		log.Printf("Failed to mark quiz as completed: %v", result.Error)
 		return fmt.Errorf("failed to mark quiz as completed: %v", result.Error)
 	}
 
 	if result.RowsAffected == 0 {
-		log.Printf("⚠️  No active quiz found for today (%s) to mark as completed", date.Format("2006-01-02"))
+		log.Printf("No active quiz found for today (%s) to mark as completed", date.Format("2006-01-02"))
 
-		// Проверим, есть ли вообще квиз на сегодня
 		var quiz Quiz
 		err := DB.Where("date = ?", date).First(&quiz).Error
 		if err == gorm.ErrRecordNotFound {
-			log.Printf("📅 No quiz exists for today - this might be normal if quiz wasn't created yet")
+			log.Printf("No quiz exists for today - this might be normal if quiz wasn't created yet")
 		} else if err != nil {
-			log.Printf("❌ Error checking quiz existence: %v", err)
+			log.Printf("Error checking quiz existence: %v", err)
 		} else {
-			log.Printf("🔍 Quiz exists but is already inactive (is_active = %t)", quiz.IsActive)
+			log.Printf("Quiz exists but is already inactive (is_active = %t)", quiz.IsActive)
 		}
 	} else {
-		log.Printf("✅ Successfully marked today's quiz as completed (affected %d rows)", result.RowsAffected)
+		log.Printf("Successfully marked today's quiz as completed (affected %d rows)", result.RowsAffected)
 	}
 
 	return nil
 }
 
-// ForceCompleteQuiz принудительно помечает сегодняшний квиз как завершенный
+// Принудительно завершить квиз
 func ForceCompleteQuiz() error {
 	moscowTZ := time.FixedZone("Moscow", 3*60*60)
 	today := time.Now().In(moscowTZ)
 	date := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.UTC)
 
-	log.Printf("🔧 Force completing quiz for date: %s", date.Format("2006-01-02"))
+	log.Printf("Force completing quiz for date: %s", date.Format("2006-01-02"))
 
-	// Принудительно деактивируем квиз на сегодня
 	result := DB.Model(&Quiz{}).Where("date = ?", date).Update("is_active", false)
 	if result.Error != nil {
-		log.Printf("❌ Failed to force complete quiz: %v", result.Error)
+		log.Printf("Failed to force complete quiz: %v", result.Error)
 		return fmt.Errorf("failed to force complete quiz: %v", result.Error)
 	}
 
-	log.Printf("✅ Force completed quiz for today (affected %d rows)", result.RowsAffected)
+	log.Printf("Force completed quiz for today (affected %d rows)", result.RowsAffected)
 	return nil
 }

@@ -1,18 +1,20 @@
 package database
 
 import (
-	"context"
 	"fmt"
 	"log"
+	"runtime"
+	"slices"
+	"sync"
 	"time"
 
+	"saxbot/environment"
 	redisClient "saxbot/redis"
 )
 
-// ========== SYNC FUNCTIONS ==========
 // Функции для синхронизации данных между Redis и PostgreSQL
 
-// SyncUserToPostgres синхронизирует данные пользователя из Redis в PostgreSQL (асинхронно)
+// Синхронизация данных пользователя из Redis в PostgreSQL
 func SyncUserToPostgres(userID int64) {
 	go func() {
 		defer func() {
@@ -21,26 +23,23 @@ func SyncUserToPostgres(userID int64) {
 			}
 		}()
 
-		// Получаем данные пользователя из Redis
-		redisUserData, isNewUser, err := redisClient.GetUserSafe(userID)
+		redisUserData, err := redisClient.GetUser(userID)
 		if err != nil {
 			log.Printf("Failed to get user %d from Redis for sync: %v", userID, err)
 			return
 		}
 
-		if redisUserData == nil || isNewUser {
+		if redisUserData == nil {
 			log.Printf("User %d not found in Redis, skipping sync", userID)
 			return
 		}
 
-		// Получаем или создаем пользователя в PostgreSQL
 		pgUser, err := GetUser(userID)
 		if err != nil {
 			log.Printf("Failed to get/create user %d in PostgreSQL: %v", userID, err)
 			return
 		}
 
-		// Обновляем данные в PostgreSQL
 		pgUser.Username = redisUserData.Username
 		pgUser.IsAdmin = redisUserData.IsAdmin
 		pgUser.Warns = redisUserData.Warns
@@ -58,7 +57,7 @@ func SyncUserToPostgres(userID int64) {
 	}()
 }
 
-// SyncQuizToPostgres синхронизирует данные квиза из Redis в PostgreSQL (асинхронно)
+// Синхронизация данных квиза из Redis в PostgreSQL
 func SyncQuizToPostgres(quote, songName string, quizTime time.Time) {
 	go func() {
 		defer func() {
@@ -77,74 +76,51 @@ func SyncQuizToPostgres(quote, songName string, quizTime time.Time) {
 	}()
 }
 
-// ========== WRAPPER FUNCTIONS ==========
-// Обертки для функций Redis, которые сохраняют в кэш (Redis) и основное хранилище (PostgreSQL)
+// Функции для синхронизации Redis и Postgres
 
-// SetUserWithSync сохраняет пользователя в Redis и синхронизирует с PostgreSQL
-func SetUserWithSync(userID int64, userData *redisClient.UserData) error {
-	// Сначала сохраняем в Redis (кэш с TTL)
+// Сохранить пользователя в Redis и Postgres
+func SetUserSync(userID int64, userData *redisClient.UserData) error {
 	err := redisClient.SetUser(userID, userData)
 	if err != nil {
 		return err
 	}
 
-	// Асинхронно синхронизируем с PostgreSQL (основное хранилище)
 	SyncUserToPostgres(userID)
 
 	return nil
 }
 
-// SetUserPersistentWithSync сохраняет пользователя в Redis и синхронизирует с PostgreSQL
-func SetUserPersistentWithSync(userID int64, userData *redisClient.UserData) error {
-	// Сначала сохраняем в Redis (теперь только кэш с TTL)
-	err := redisClient.SetUser(userID, userData)
-	if err != nil {
-		return err
-	}
-
-	// Асинхронно синхронизируем с PostgreSQL (основное хранилище)
-	SyncUserToPostgres(userID)
-
-	return nil
-}
-
-// UpdateUserWarnsWithSync обновляет предупреждения в Redis и синхронизирует с PostgreSQL
-func UpdateUserWarnsWithSync(userID int64, delta int) error {
-	// Сначала обновляем в Redis (кэш с TTL)
+// Обновить счетчик предупреждений в Redis и Postgres
+func UpdateUserWarnsSync(userID int64, delta int) error {
 	err := redisClient.UpdateUserWarns(userID, delta)
 	if err != nil {
 		return err
 	}
 
-	// Асинхронно синхронизируем с PostgreSQL (основное хранилище)
 	SyncUserToPostgres(userID)
 
 	return nil
 }
 
-// SaveQuizDataWithSync сохраняет квиз в Redis и синхронизирует с PostgreSQL
-func SaveQuizDataWithSync(quote, songName string, quizTime time.Time) error {
-	// Сначала сохраняем в Redis (кэш с TTL)
+// Сохранить данные квиза в Redis и Postgres
+func SaveQuizDataSync(quote, songName string, quizTime time.Time) error {
 	err := redisClient.SaveQuizData(quote, songName, quizTime)
 	if err != nil {
 		return err
 	}
 
-	// Асинхронно синхронизируем с PostgreSQL (основное хранилище)
 	SyncQuizToPostgres(quote, songName, quizTime)
 
 	return nil
 }
 
-// ResetAllUsersWinnerStatusWithSync сбрасывает статус победителя в Redis и синхронизирует с PostgreSQL
-func ResetAllUsersWinnerStatusWithSync() error {
-	// Сначала сбрасываем в Redis (кэш с TTL)
+// Сбросить статус победителя в Redis и Postgres
+func ResetAllUsersWinnerStatusSync() error {
 	err := redisClient.ResetAllUsersWinnerStatus()
 	if err != nil {
 		return err
 	}
 
-	// Асинхронно синхронизируем с PostgreSQL (основное хранилище)
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -164,15 +140,13 @@ func ResetAllUsersWinnerStatusWithSync() error {
 	return nil
 }
 
-// RefreshAllUsersAdminStatusWithSync обновляет админский статус в Redis и синхронизирует с PostgreSQL
-func RefreshAllUsersAdminStatusWithSync() error {
-	// Сначала обновляем в Redis (кэш с TTL)
+// Обновить данные об админах в Redis и Postgres
+func RefreshAllAdminStatusSync() error {
 	err := redisClient.RefreshAllUsersAdminStatus()
 	if err != nil {
 		return err
 	}
 
-	// Асинхронно синхронизируем с PostgreSQL (основное хранилище)
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -192,23 +166,29 @@ func RefreshAllUsersAdminStatusWithSync() error {
 	return nil
 }
 
-// ========== BATCH SYNC FUNCTIONS ==========
 // Функции для массовой синхронизации данных
 
-// SyncAllUsersFromRedis синхронизирует всех пользователей из Redis в PostgreSQL
+// Синхронизация всех пользователей из Redis в PostgreSQL
 func SyncAllUsersFromRedis() error {
 	log.Printf("Starting full user sync from Redis to PostgreSQL...")
 
-	// Получаем всех пользователей из Redis
 	redisUsers, err := redisClient.GetAllUsers()
 	if err != nil {
 		return err
 	}
 
-	syncCount := 0
+	var maxWorkers = runtime.GOMAXPROCS(0) * 2
+	sem := make(chan struct{}, maxWorkers)
+	var wg sync.WaitGroup
+
 	for userID := range redisUsers {
-		// Синхронизируем каждого пользователя асинхронно
+		wg.Add(1)
+
+		sem <- struct{}{}
 		go func(uid int64) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
 			defer func() {
 				if r := recover(); r != nil {
 					log.Printf("Panic in batch sync for user %d: %v", uid, r)
@@ -217,163 +197,58 @@ func SyncAllUsersFromRedis() error {
 
 			SyncUserToPostgres(uid)
 		}(userID)
-		syncCount++
-
-		// Небольшая задержка чтобы не перегружать систему
-		if syncCount%10 == 0 {
-			time.Sleep(100 * time.Millisecond)
-		}
 	}
 
-	log.Printf("Initiated sync for %d users from Redis to PostgreSQL", syncCount)
+	wg.Wait()
+	log.Printf("Finished sync for %d users from Redis to PostgreSQL", len(redisUsers))
 	return nil
 }
 
-// VerifyDataConsistency проверяет консистентность данных между Redis и PostgreSQL
-func VerifyDataConsistency() error {
-	log.Printf("Starting data consistency check...")
-
-	// Получаем статистику из обеих баз
-	redisStats, err := redisClient.GetDatabaseInfo()
-	if err != nil {
-		return err
+func GetUserSync(userID int64) (userData *redisClient.UserData, err error) {
+	userData, err = redisClient.GetUser(userID)
+	if err == nil {
+		return userData, nil
 	}
 
-	pgStats, err := GetDatabaseStats()
+	log.Printf("User %d not found in Redis, trying PostgreSQL fallback", userID)
+	pgUser, err := GetUser(userID)
 	if err != nil {
-		return err
-	}
-
-	log.Printf("Redis stats: %+v", redisStats)
-	log.Printf("PostgreSQL stats: %+v", pgStats)
-
-	log.Printf("Data consistency check completed")
-	return nil
-}
-
-// ========== HELPER FUNCTIONS ==========
-
-// InitSyncService инициализирует сервис синхронизации
-func InitSyncService() {
-	log.Printf("Initializing database sync service...")
-
-	// Запускаем периодическую синхронизацию данных
-	go func() {
-		ticker := time.NewTicker(30 * time.Minute) // Каждые 30 минут
-		defer ticker.Stop()
-
-		for range ticker.C {
-			log.Printf("Running periodic data consistency check...")
-			if err := VerifyDataConsistency(); err != nil {
-				log.Printf("Error during consistency check: %v", err)
-			}
+		log.Printf("Failed to get user %d from PostgreSQL: %v", userID, err)
+	} else if pgUser != nil {
+		userData = &redisClient.UserData{
+			Username:  pgUser.Username,
+			IsAdmin:   pgUser.IsAdmin,
+			Warns:     pgUser.Warns,
+			Status:    pgUser.Status,
+			IsWinner:  pgUser.IsWinner,
+			AdminPref: pgUser.AdminPref,
 		}
-	}()
 
-	log.Printf("Database sync service initialized")
-}
-
-// SyncUserWithRetry синхронизирует пользователя с повторными попытками
-func SyncUserWithRetry(userID int64, maxRetries int) {
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("Panic in SyncUserWithRetry for user %d: %v", userID, r)
-			}
-		}()
-
-		for attempt := 1; attempt <= maxRetries; attempt++ {
-			// Получаем данные пользователя из Redis
-			redisUserData, isNewUser, err := redisClient.GetUserSafe(userID)
-			if err != nil {
-				log.Printf("Attempt %d: Failed to get user %d from Redis: %v", attempt, userID, err)
-				if attempt < maxRetries {
-					time.Sleep(time.Duration(attempt) * time.Second) // Экспоненциальная задержка
-					continue
-				}
-				return
-			}
-
-			if redisUserData == nil || isNewUser {
-				log.Printf("User %d not found in Redis, stopping retry attempts", userID)
-				return
-			}
-
-			// Получаем или создаем пользователя в PostgreSQL
-			pgUser, err := GetUser(userID)
-			if err != nil {
-				log.Printf("Attempt %d: Failed to get/create user %d in PostgreSQL: %v", attempt, userID, err)
-				if attempt < maxRetries {
-					time.Sleep(time.Duration(attempt) * time.Second)
-					continue
-				}
-				return
-			}
-
-			// Обновляем данные в PostgreSQL
-			pgUser.Username = redisUserData.Username
-			pgUser.IsAdmin = redisUserData.IsAdmin
-			pgUser.Warns = redisUserData.Warns
-			pgUser.Status = redisUserData.Status
-			pgUser.IsWinner = redisUserData.IsWinner
-			pgUser.AdminPref = redisUserData.AdminPref
-
-			err = SaveUser(pgUser)
-			if err != nil {
-				log.Printf("Attempt %d: Failed to sync user %d to PostgreSQL: %v", attempt, userID, err)
-				if attempt < maxRetries {
-					time.Sleep(time.Duration(attempt) * time.Second)
-					continue
-				}
-				return
-			}
-
-			log.Printf("Successfully synced user %d to PostgreSQL on attempt %d", userID, attempt)
-			return
-		}
-	}()
-}
-
-// GetSyncStatus возвращает статус синхронизации
-func GetSyncStatus() (map[string]interface{}, error) {
-	status := make(map[string]interface{})
-
-	// Получаем статистику из Redis
-	redisStats, err := redisClient.GetDatabaseInfo()
-	if err != nil {
-		status["redis_error"] = err.Error()
-	} else {
-		status["redis_stats"] = redisStats
+		redisClient.SetUser(userID, userData)
+		return userData, nil
 	}
 
-	// Получаем статистику из PostgreSQL
-	pgStats, err := GetDatabaseStats()
-	if err != nil {
-		status["postgres_error"] = err.Error()
-	} else {
-		status["postgres_stats"] = pgStats
+	log.Printf("Creating new user %d (not found in any storage)", userID)
+	admins := environment.GetAdmins()
+	if len(admins) == 0 {
+		log.Printf("ADMINS environment variable is empty")
 	}
 
-	status["timestamp"] = time.Now().Format(time.RFC3339)
+	if slices.Contains(admins, userID) {
+		log.Printf("userID: %d is admin", userID)
+		userData = &redisClient.UserData{Username: "", IsAdmin: true, Warns: 0, Status: "active", IsWinner: false}
+	} else {
+		log.Printf("userID: %d is not admin", userID)
+		userData = &redisClient.UserData{Username: "", IsAdmin: false, Warns: 0, Status: "active", IsWinner: false}
+	}
 
-	return status, nil
+	redisClient.SetUser(userID, userData)
+
+	return userData, nil
 }
 
-// CleanupSyncService очищает ресурсы сервиса синхронизации
-func CleanupSyncService() {
-	log.Printf("Cleaning up database sync service...")
-	// Здесь можно добавить логику очистки, если потребуется
-	log.Printf("Database sync service cleanup completed")
-}
-
-// GetContext возвращает контекст Redis для использования в миграции
-func GetContext() context.Context {
-	return context.Background()
-}
-
-// GetAllUsersWithFallback получает всех пользователей с fallback на PostgreSQL
-func GetAllUsersWithFallback() (map[int64]*redisClient.UserData, error) {
-	// Сначала пробуем Redis
+// Получить всех пользователей из Redis и Postgres
+func GetAllUsersSync() (map[int64]*redisClient.UserData, error) {
 	redisUsers, err := redisClient.GetAllUsers()
 	if err == nil && len(redisUsers) > 0 {
 		return redisUsers, nil
@@ -381,13 +256,11 @@ func GetAllUsersWithFallback() (map[int64]*redisClient.UserData, error) {
 
 	log.Printf("Failed to get users from Redis or Redis is empty: %v, trying PostgreSQL fallback", err)
 
-	// Fallback на PostgreSQL
 	pgUsers, err := GetAllUsers()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get users from PostgreSQL: %v", err)
 	}
 
-	// Конвертируем в формат Redis
 	result := make(map[int64]*redisClient.UserData)
 	for _, pgUser := range pgUsers {
 		result[pgUser.UserID] = &redisClient.UserData{
@@ -404,11 +277,8 @@ func GetAllUsersWithFallback() (map[int64]*redisClient.UserData, error) {
 	return result, nil
 }
 
-// ========== QUIZ STATUS SYNC FUNCTIONS ==========
-
-// GetQuizAlreadyWasWithFallback проверяет статус квиза с fallback на PostgreSQL
-func GetQuizAlreadyWasWithFallback() (bool, error) {
-	// Сначала проверяем в Redis
+// Получить статус квиза из Redis и Postgres
+func GetQuizAlreadyWasSync() (bool, error) {
 	wasQuiz, err := redisClient.GetQuizAlreadyWas()
 	if err == nil {
 		return wasQuiz, nil
@@ -416,19 +286,16 @@ func GetQuizAlreadyWasWithFallback() (bool, error) {
 
 	log.Printf("Failed to get quiz status from Redis: %v, trying PostgreSQL fallback", err)
 
-	// Fallback на PostgreSQL
 	return GetQuizAlreadyWas()
 }
 
-// SetQuizAlreadyWasWithSync устанавливает флаг завершения квиза в Redis и синхронизирует с PostgreSQL
-func SetQuizAlreadyWasWithSync() error {
-	// Сначала устанавливаем в Redis
+// Установить флаг завершения квиза в Redis и Postgres
+func SetQuizAlreadyWasSync() error {
 	err := redisClient.SetQuizAlreadyWas()
 	if err != nil {
 		log.Printf("Failed to set quiz completed flag in Redis: %v", err)
 	}
 
-	// Асинхронно синхронизируем с PostgreSQL
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {

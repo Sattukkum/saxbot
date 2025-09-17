@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"log"
 	"saxbot/activities"
@@ -47,12 +46,6 @@ func main() {
 		panic("ALLOWED_CHATS is not set")
 	}
 
-	// Флаги командной строки
-	clearRedis := flag.Bool("clear-redis", false, "Очистить базу данных Redis и выйти")
-	showInfo := flag.Bool("info", false, "Показать информацию о базе данных Redis и выйти")
-	restoreBackup := flag.Bool("restore-backup", false, "Восстановить базу данных Redis из бэкапа redis_data/dump.rdb и выйти")
-	flag.Parse()
-
 	if redisHost == "" {
 		redisHost = "localhost"
 	}
@@ -61,14 +54,14 @@ func main() {
 	}
 	redisAddr := redisHost + ":" + redisPort
 
-	// Инициализируем подключение к Redis
+	// подключение к Redis
 	err := redisClient.InitRedis(redisAddr, "", 0)
 	if err != nil {
 		log.Fatalf("Не удалось подключиться к Redis: %v", err)
 	}
 	defer redisClient.CloseRedis()
 
-	// Инициализируем подключение к PostgreSQL
+	// подключение к PostgreSQL
 	pgEnv := environment.GetPostgreSQLEnvironment()
 	pgPort := 5432
 	if pgEnv.Port != "" {
@@ -83,37 +76,14 @@ func main() {
 	} else {
 		defer database.ClosePostgreSQL()
 
-		// Выполняем миграцию базы данных
 		err = database.AutoMigrate()
 		if err != nil {
 			log.Printf("Предупреждение: не удалось выполнить миграцию PostgreSQL: %v", err)
-		} else {
-			// Инициализируем fallback интерфейс для Redis
-			database.InitRedisFallback()
-
-			// Инициализируем сервис синхронизации
-			database.InitSyncService()
-			defer database.CleanupSyncService()
 		}
 	}
 
-	if *showInfo {
-		redisClient.ShowInfo()
-		return
-	}
-
-	if *clearRedis {
-		redisClient.ClearRedis()
-		return
-	}
-
-	if *restoreBackup {
-		redisClient.RestoreBackup()
-		return
-	}
-
 	log.Printf("Обновляем админские права пользователей из переменной окружения ADMINS...")
-	err = database.RefreshAllUsersAdminStatusWithSync()
+	err = database.RefreshAllAdminStatusSync()
 	if err != nil {
 		log.Printf("Предупреждение: не удалось обновить админские права: %v", err)
 	}
@@ -132,12 +102,10 @@ func main() {
 	go func() {
 		moscowTZ := time.FixedZone("Moscow", 3*60*60)
 
-		// Получить данные квиза из Redis
 		var lastQuizDate time.Time
 		todayQuiz, lastQuizDate = activities.GetQuizData()
 
-		// Получить флаг "квиз уже был" с fallback на PostgreSQL
-		if wasQuiz, err := database.GetQuizAlreadyWasWithFallback(); err == nil {
+		if wasQuiz, err := database.GetQuizAlreadyWasSync(); err == nil {
 			quizAlreadyWas = wasQuiz
 			if wasQuiz {
 				log.Printf("Квиз сегодня уже был проведен")
@@ -152,18 +120,15 @@ func main() {
 			now := time.Now().In(moscowTZ)
 			today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, moscowTZ)
 
-			// Определить новое время квиза (раз в сутки)
 			if !today.Equal(lastQuizDate) {
 				todayQuiz = activities.GetNewQuiz()
 				quizAlreadyWas = false
 				lastQuizDate = today
 			}
 
-			// Если время квиза не установлено (например, при первом запуске), устанавливаем его
 			if todayQuiz.QuizTime.IsZero() {
 				todayQuiz.QuizTime = activities.EstimateQuizTime()
-				// Сохраняем в Redis для консистентности
-				if err := database.SaveQuizDataWithSync(todayQuiz.Quote, todayQuiz.SongName, todayQuiz.QuizTime); err != nil {
+				if err := database.SaveQuizDataSync(todayQuiz.Quote, todayQuiz.SongName, todayQuiz.QuizTime); err != nil {
 					log.Printf("Ошибка сохранения времени квиза в Redis: %v", err)
 				}
 			}
@@ -235,7 +200,7 @@ func main() {
 		}
 		if userData.Username != c.Message().Sender.Username {
 			userData.Username = c.Message().Sender.Username
-			if err := database.SetUserPersistentWithSync(userID, userData); err != nil {
+			if err := database.SetUserSync(userID, userData); err != nil {
 				log.Printf("Failed to save persistent username update for user %d: %v", userID, err)
 			}
 		}
@@ -246,15 +211,13 @@ func main() {
 		}
 
 		if userData.Status == "banned" {
-			// Проверяем, не является ли сообщение пересланным
-			// Если сообщение переслано, не разбаниваем автоматически
 			if c.Message().OriginalSender != nil || c.Message().OriginalChat != nil {
 				log.Printf("Получено пересланное сообщение от забаненного пользователя %d, автоматический разбан не выполняется", userID)
 				return nil
 			}
 
 			userData.Status = "active"
-			if err := database.SetUserPersistentWithSync(userID, userData); err != nil {
+			if err := database.SetUserSync(userID, userData); err != nil {
 				log.Printf("Failed to save persistent status update for user %d: %v", userID, err)
 			}
 			messages.SendMessage(c, fmt.Sprintf("@%s, тебя разбанили, но это можно исправить. Веди себя хорошо", userData.Username), messageThreadID)
@@ -268,7 +231,7 @@ func main() {
 			}
 			if replyToUserData.Username != c.Message().ReplyTo.Sender.Username {
 				replyToUserData.Username = c.Message().ReplyTo.Sender.Username
-				if err := database.SetUserPersistentWithSync(replyToID, replyToUserData); err != nil {
+				if err := database.SetUserSync(replyToID, replyToUserData); err != nil {
 					log.Printf("Failed to save persistent username update for reply user %d: %v", replyToID, err)
 				}
 			}
@@ -278,10 +241,10 @@ func main() {
 			switch c.Message().Text {
 			case "Предупреждение", "предупреждение", "ПРЕДУПРЕЖДЕНИЕ":
 				if isReply {
-					if err := database.UpdateUserWarnsWithSync(replyToID, 1); err != nil {
+					if err := database.UpdateUserWarnsSync(replyToID, 1); err != nil {
 						log.Printf("Failed to save warns increase for user %d: %v", replyToID, err)
 					} else {
-						replyToUserData.Warns++ // Обновляем локальную копию для дальнейшего использования
+						replyToUserData.Warns++
 					}
 					var text string
 					if strings.EqualFold(c.Message().ReplyTo.Text, "Лена") {
@@ -382,7 +345,7 @@ func main() {
 			if strings.EqualFold(c.Message().Text, todayQuiz.SongName) {
 				quizRunning = false
 				quizAlreadyWas = true
-				database.SetQuizAlreadyWasWithSync()
+				database.SetQuizAlreadyWasSync()
 				winnerTitle := textcases.GetRandomTitle()
 				messages.ReplyMessage(c, fmt.Sprintf("Правильно! Песня: %s", todayQuiz.SongName), messageThreadID)
 				time.Sleep(100 * time.Millisecond)
@@ -409,7 +372,7 @@ func main() {
 		}
 		if userData.Username != joinedUser.Username {
 			userData.Username = joinedUser.Username
-			if err := database.SetUserPersistentWithSync(joinedUser.ID, userData); err != nil {
+			if err := database.SetUserSync(joinedUser.ID, userData); err != nil {
 				log.Printf("Failed to save persistent username update for joined user %d: %v", joinedUser.ID, err)
 			}
 		}

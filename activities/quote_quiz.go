@@ -39,7 +39,6 @@ func GetTodayQuiz() QuoteQuiz {
 }
 
 func GetQuizData() (quiz QuoteQuiz, lastQuizDate time.Time) {
-	// Сначала пробуем загрузить из Redis
 	if quote, songName, savedTime, err := redisClient.LoadQuizData(); err == nil {
 		moscowTZ := time.FixedZone("Moscow", 3*60*60)
 		Quote := quote
@@ -58,7 +57,6 @@ func GetQuizData() (quiz QuoteQuiz, lastQuizDate time.Time) {
 	} else {
 		log.Printf("Не удалось загрузить данные квиза из Redis: %v", err)
 
-		// Fallback: пробуем загрузить из PostgreSQL
 		if quote, songName, savedTime, pgErr := database.LoadQuizData(); pgErr == nil {
 			moscowTZ := time.FixedZone("Moscow", 3*60*60)
 			QuizTime := savedTime.In(moscowTZ)
@@ -67,7 +65,6 @@ func GetQuizData() (quiz QuoteQuiz, lastQuizDate time.Time) {
 			log.Printf("Загружены полные данные квиза из PostgreSQL (fallback): Quote='%s', SongName='%s', Time=%s",
 				quote, songName, QuizTime.Format("15:04"))
 
-			// Сохраняем в Redis для быстрого доступа в будущем
 			redisClient.SaveQuizData(quote, songName, savedTime)
 
 			quiz := QuoteQuiz{
@@ -80,7 +77,6 @@ func GetQuizData() (quiz QuoteQuiz, lastQuizDate time.Time) {
 			log.Printf("Не удалось загрузить данные квиза из PostgreSQL: %v", pgErr)
 		}
 
-		// Если не найдено ни в Redis, ни в PostgreSQL - возвращаем пустой квиз с вчерашней датой
 		moscowTZ := time.FixedZone("Moscow", 3*60*60)
 		yesterday := time.Now().In(moscowTZ).AddDate(0, 0, -1)
 		yesterdayDate := time.Date(yesterday.Year(), yesterday.Month(), yesterday.Day(), 0, 0, 0, 0, moscowTZ)
@@ -89,7 +85,6 @@ func GetQuizData() (quiz QuoteQuiz, lastQuizDate time.Time) {
 }
 
 func GetNewQuiz() (todayQuiz QuoteQuiz) {
-	// Очищаем флаг предыдущего квиза
 	if err := redisClient.ClearQuizAlreadyWas(); err != nil {
 		log.Printf("Ошибка очистки флага квиза в Redis: %v", err)
 	} else {
@@ -105,7 +100,7 @@ func GetNewQuiz() (todayQuiz QuoteQuiz) {
 		log.Printf("Возможно, проблема с функцией GetRandomQuote() или данными в SongQuotes")
 	}
 
-	if err := database.SaveQuizDataWithSync(todayQuiz.Quote, todayQuiz.SongName, todayQuiz.QuizTime); err != nil {
+	if err := database.SaveQuizDataSync(todayQuiz.Quote, todayQuiz.SongName, todayQuiz.QuizTime); err != nil {
 		log.Printf("Ошибка сохранения данных квиза: %v", err)
 	} else {
 		log.Printf("Установлены и сохранены полные данные квиза на сегодня: Quote='%s', SongName='%s', Time=%s",
