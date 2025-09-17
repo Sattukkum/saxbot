@@ -18,7 +18,6 @@ func GetUser(userID int64) (*User, error) {
 
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			// Пользователь не найден - создаем нового
 			log.Printf("Creating new user %d (not found in database)", userID)
 			admins := environment.GetAdmins()
 
@@ -43,7 +42,6 @@ func GetUser(userID int64) (*User, error) {
 		return nil, fmt.Errorf("failed to get user: %v", err)
 	}
 
-	// Проверяем и обновляем админский статус
 	if updateUserAdminStatus(userID, &user) {
 		err = DB.Save(&user).Error
 		if err != nil {
