@@ -99,6 +99,7 @@ func main() {
 		return
 	}
 
+	// Управление квизом
 	go func() {
 		moscowTZ := time.FixedZone("Moscow", 3*60*60)
 
@@ -193,7 +194,7 @@ func main() {
 			replyToID = c.Message().ReplyTo.Sender.ID
 		}
 
-		userData, err := redisClient.GetUser(userID)
+		userData, err := database.GetUserSync(userID)
 		if err != nil {
 			log.Printf("Failed to get user data: %v", err)
 			return nil
@@ -224,7 +225,7 @@ func main() {
 		}
 
 		if isReply {
-			replyToUserData, err = redisClient.GetUser(replyToID)
+			replyToUserData, err = database.GetUserSync(replyToID)
 			if err != nil {
 				log.Printf("Failed to get reply to user data: %v", err)
 				return nil
@@ -365,7 +366,7 @@ func main() {
 			return nil
 		}
 
-		userData, err := redisClient.GetUser(joinedUser.ID)
+		userData, err := database.GetUserSync(joinedUser.ID)
 		if err != nil {
 			log.Printf("Failed to get user data: %v", err)
 			return nil
