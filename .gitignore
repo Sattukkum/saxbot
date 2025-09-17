@@ -18,7 +18,6 @@ saxbot
 redis_data/
 *.rdb
 *.aof
-redis.conf
 redis.local.conf
 
 # Logs
