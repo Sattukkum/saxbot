@@ -40,13 +40,14 @@ func GetMainEnvironment() MainEnvironment {
 	allowedChats := getAllowedChats()
 	admins := GetAdmins()
 	redisDB := getRedisDB()
+	redisHost := getRedisHost()
 	redisPort := getRedisPort()
 	quizChatID := getQuizChatID()
 	adminUsernames := getAdminsUsernames()
 
 	return MainEnvironment{
 		Token:           os.Getenv("BOT_TOKEN"),
-		RedisHost:       os.Getenv("REDIS_HOST"),
+		RedisHost:       redisHost,
 		RedisPort:       redisPort,
 		RedisDB:         redisDB,
 		AllowedChats:    allowedChats,
@@ -70,7 +71,7 @@ func GetPostgreSQLEnvironment() PostgreSQLEnvironment {
 	portStr := os.Getenv("POSTGRES_PORT")
 	port, err := strconv.Atoi(portStr)
 	if err != nil || port == 0 {
-		port = 5432
+		port = 5432 //default value
 	}
 
 	host := os.Getenv("POSTGRES_HOST")
@@ -174,16 +175,24 @@ func getRedisDB() int {
 	return redisDBInt
 }
 
+func getRedisHost() string {
+	redisHost := os.Getenv("REDIS_HOST")
+	if redisHost == "" {
+		return "localhost"
+	}
+	return redisHost
+}
+
 func getRedisPort() int {
 	redisPort := os.Getenv("REDIS_PORT")
 	if redisPort == "" {
 		log.Printf("REDIS_PORT environment variable is empty")
-		return 0
+		return 6379 // default value
 	}
 	redisPortInt, err := strconv.Atoi(redisPort)
 	if err != nil {
 		log.Printf("Failed to parse REDIS_PORT environment variable: %v", err)
-		return 0
+		return 6379
 	}
 	return redisPortInt
 }

@@ -51,14 +51,7 @@ func main() {
 		panic("ALLOWED_CHATS is not set")
 	}
 
-	if redisHost == "" {
-		redisHost = "localhost"
-	}
-	if redisPort == 0 {
-		redisPort = 6379
-	}
 	redisAddr := redisHost + ":" + strconv.Itoa(redisPort)
-
 	var err error
 	var redis *redis.Client
 	var db *gorm.DB
