@@ -103,7 +103,7 @@ func GetPostgreSQLEnvironment() PostgreSQLEnvironment {
 		Host:     host,
 		Port:     port,
 		User:     user,
-		Password: os.Getenv("POSTGRES_PASSWORD"),
+		Password: password,
 		Database: database,
 		SSLMode:  sslmode,
 	}
