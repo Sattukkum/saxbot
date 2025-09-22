@@ -2,9 +2,9 @@ package admins
 
 import (
 	"log"
-	"saxbot/database"
+	"saxbot/domain"
 	"saxbot/environment"
-	"saxbot/redis"
+	"saxbot/sync"
 	"slices"
 	"time"
 
@@ -18,37 +18,41 @@ func IsAdmin(userID int64) bool {
 }
 
 // Забанить юзера
-func BanUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember) {
-	existingData, err := redis.GetUser(user.User.ID)
+func BanUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, sync sync.SyncService) {
+	existingData, err := sync.GetUser(user.User.ID)
 	if err != nil {
-		existingData = &redis.UserData{
-			Username: user.User.Username,
-			IsAdmin:  false,
-			Warns:    0,
-			IsWinner: false,
+		existingData = domain.User{
+			UserID:    user.User.ID,
+			Username:  user.User.Username,
+			IsAdmin:   false,
+			Warns:     0,
+			Status:    "banned",
+			IsWinner:  false,
+			AdminPref: "",
 		}
 	}
 
-	existingData.Status = "banned"
-
-	database.SetUserSync(user.User.ID, existingData)
+	sync.SaveUser(&existingData)
 	bot.Ban(chat, user)
 }
 
 // Замутить юзера на 30 минут
-func MuteUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember) {
-	existingData, err := redis.GetUser(user.User.ID)
+func MuteUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, sync sync.SyncService) {
+	existingData, err := sync.GetUser(user.User.ID)
 	if err != nil {
-		existingData = &redis.UserData{
-			Username: user.User.Username,
-			IsAdmin:  false,
-			Warns:    0,
-			IsWinner: false,
+		existingData = domain.User{
+			UserID:    user.User.ID,
+			Username:  user.User.Username,
+			IsAdmin:   false,
+			Warns:     0,
+			Status:    "muted",
+			IsWinner:  false,
+			AdminPref: "",
 		}
 	}
 
 	existingData.Status = "muted"
-	database.SetUserSync(user.User.ID, existingData)
+	sync.SaveUser(&existingData)
 
 	user.Rights = tele.Rights{CanSendMessages: false}
 	bot.Restrict(chat, user)
@@ -56,10 +60,10 @@ func MuteUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember) {
 	go func(userID int64) {
 		time.Sleep(30 * time.Minute)
 
-		userData, err := redis.GetUser(userID)
+		userData, err := sync.GetUser(userID)
 		if err == nil {
 			userData.Status = "active"
-			database.SetUserSync(userID, userData)
+			sync.SaveUser(&userData)
 		}
 
 		unmuteUser := &tele.ChatMember{
@@ -79,16 +83,16 @@ func MuteUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember) {
 }
 
 // Размутить юзера досрочно
-func UnmuteUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember) {
-	userData, err := database.GetUserSync(user.User.ID)
+func UnmuteUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, sync sync.SyncService) {
+	userData, err := sync.GetUser(user.User.ID)
 	if err != nil {
 		log.Printf("UnmuteUser: error for user %d: %v - skipping operation", user.User.ID, err)
 		return
 	}
 
 	userData.Status = "active"
-	if err := database.SetUserSync(user.User.ID, userData); err != nil {
-		log.Printf("UnmuteUser: Failed to save persistent data for user %d: %v", user.User.ID, err)
+	if err := sync.SaveUser(&userData); err != nil {
+		log.Printf("UnmuteUser: Failed to save data for user %d: %v", user.User.ID, err)
 	}
 	user.Rights = tele.Rights{
 		CanSendMessages:  true,
@@ -103,21 +107,19 @@ func UnmuteUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember) {
 }
 
 // Установить админский преф с минимальными правами
-func SetPref(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, pref string) {
+func SetPref(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, pref string, sync sync.SyncService) {
 	log.Printf("SetPref: Starting for user %d (%s) with pref '%s'", user.User.ID, user.User.Username, pref)
 
-	existingData, err := database.GetUserSync(user.User.ID)
+	existingData, err := sync.GetUser(user.User.ID)
 	if err != nil {
-		log.Printf("SetPref: Redis error for user %d: %v - skipping operation", user.User.ID, err)
+		log.Printf("SetPref: Database error for user %d: %v - skipping operation", user.User.ID, err)
 		return
 	}
 
 	existingData.IsWinner = true
-	if err := database.SetUserSync(user.User.ID, existingData); err != nil {
+	if err := sync.SaveUser(&existingData); err != nil {
 		log.Printf("SetPref: Failed to save persistent data for user %d: %v", user.User.ID, err)
-		return
 	}
-	log.Printf("SetPref: Updated user data in Redis")
 
 	member, err := bot.ChatMemberOf(chat, user.User)
 	if err != nil {
@@ -133,7 +135,7 @@ func SetPref(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, pref string)
 			}
 
 			log.Printf("SetPref: User is not admin, promoting...")
-			promoteParams := map[string]interface{}{
+			promoteParams := map[string]any{
 				"chat_id":                chat.ID,
 				"user_id":                user.User.ID,
 				"is_anonymous":           false,
@@ -151,18 +153,6 @@ func SetPref(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, pref string)
 			_, promoteErr := bot.Raw("promoteChatMember", promoteParams)
 			if promoteErr != nil {
 				log.Printf("SetPref: Error promoting user with Raw API: %v", promoteErr)
-			} else {
-				log.Printf("SetPref: User promoted successfully with Raw API")
-				// Небольшая пауза для обновления статуса в Telegram
-				time.Sleep(3 * time.Second)
-
-				// Проверяем, действительно ли пользователь стал админом
-				updatedMember, checkErr := bot.ChatMemberOf(chat, user.User)
-				if checkErr != nil {
-					log.Printf("SetPref: Error checking updated member status: %v", checkErr)
-				} else {
-					log.Printf("SetPref: Updated member role after promote: %s", updatedMember.Role)
-				}
 			}
 		} else {
 			if member.Title != "" {
@@ -180,47 +170,46 @@ func SetPref(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, pref string)
 		log.Printf("SetPref: Admin title set successfully")
 	}
 
-	database.SetUserSync(user.User.ID, existingData)
-	log.Printf("SetPref: Final Redis update completed")
+	sync.SaveUser(&existingData)
 }
 
 // Удалить преф у пользователя
 // TODO: Не работает корректно все, кроме замены статуса в БД, нужно переписать логику
-func RemovePref(bot *tele.Bot, chat *tele.Chat) {
-	allUsers, err := database.GetAllUsersSync()
+func RemovePref(bot *tele.Bot, chat *tele.Chat, sync sync.SyncService) {
+	allUsers, err := sync.GetAllUsers()
 	if err != nil {
 		log.Printf("RemovePref: Error getting all users: %v", err)
 		return
 	}
 
-	for userID, userData := range allUsers {
+	for _, userData := range allUsers {
 		if !userData.IsWinner {
 			continue
 		}
 
 		userData.IsWinner = false
-		log.Printf("RemovePref: Resetting winner status for user %d", userID)
+		log.Printf("RemovePref: Resetting winner status for user %d", userData.UserID)
 
-		user := &tele.User{ID: userID}
+		user := &tele.User{ID: userData.UserID}
 		member, err := bot.ChatMemberOf(chat, user)
 		if err != nil || member.Role != tele.Administrator {
-			database.SetUserSync(userID, userData)
-			log.Printf("RemovePref: User %d is not admin, updating data in Redis", userID)
+			sync.SaveUser(&userData)
+			log.Printf("RemovePref: User %d is not admin, updating data in Redis", userData.UserID)
 			continue
 		}
 
 		if userData.AdminPref != "" {
-			log.Printf("RemovePref: User %d has saved admin title, setting it back", userID)
+			log.Printf("RemovePref: User %d has saved admin title, setting it back", userData.UserID)
 			err = bot.SetAdminTitle(chat, user, userData.AdminPref)
 			if err != nil {
 				log.Printf("RemovePref: Error setting admin title back: %v", err)
 			}
 			userData.AdminPref = ""
 		} else {
-			log.Printf("RemovePref: User %d was not admin before quiz, demoting completely", userID)
+			log.Printf("RemovePref: User %d was not admin before quiz, demoting completely", userData.UserID)
 			demoteParams := map[string]any{
 				"chat_id":                chat.ID,
-				"user_id":                userID,
+				"user_id":                userData.UserID,
 				"is_anonymous":           false,
 				"can_manage_chat":        false,
 				"can_delete_messages":    false,
@@ -235,16 +224,16 @@ func RemovePref(bot *tele.Bot, chat *tele.Chat) {
 
 			_, demoteErr := bot.Raw("promoteChatMember", demoteParams)
 			if demoteErr != nil {
-				log.Printf("RemovePref: Error demoting user %d with Raw API: %v", userID, demoteErr)
+				log.Printf("RemovePref: Error demoting user %d with Raw API: %v", userData.UserID, demoteErr)
 				err = bot.SetAdminTitle(chat, user, "")
 				if err != nil {
 					log.Printf("RemovePref: Error setting admin title to empty: %v", err)
 				}
 			} else {
-				log.Printf("RemovePref: User %d demoted successfully", userID)
+				log.Printf("RemovePref: User %d demoted successfully", userData.UserID)
 			}
 		}
 
-		database.SetUserSync(userID, userData)
+		sync.SaveUser(&userData)
 	}
 }

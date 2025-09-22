@@ -1,14 +1,17 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"saxbot/activities"
 	"saxbot/admins"
 	"saxbot/database"
+	"saxbot/domain"
 	"saxbot/environment"
 	"saxbot/messages"
 	redisClient "saxbot/redis"
+	"saxbot/sync"
 	textcases "saxbot/text_cases"
 	"slices"
 	"strconv"
@@ -16,7 +19,9 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/redis/go-redis/v9"
 	tele "gopkg.in/telebot.v4"
+	"gorm.io/gorm"
 )
 
 var todayQuiz activities.QuoteQuiz
@@ -49,41 +54,42 @@ func main() {
 	if redisHost == "" {
 		redisHost = "localhost"
 	}
-	if redisPort == "" {
-		redisPort = "6379"
+	if redisPort == 0 {
+		redisPort = 6379
 	}
-	redisAddr := redisHost + ":" + redisPort
+	redisAddr := redisHost + ":" + strconv.Itoa(redisPort)
+
+	var err error
+	var redis *redis.Client
+	var db *gorm.DB
+	ctx := context.Background()
 
 	// подключение к Redis
-	err := redisClient.InitRedis(redisAddr, "", 0)
+	redis, err = redisClient.InitRedis(redisAddr, "", 0)
 	if err != nil {
 		log.Fatalf("Не удалось подключиться к Redis: %v", err)
 	}
-	defer redisClient.CloseRedis()
+	defer redisClient.CloseRedis(redis)
 
 	// подключение к PostgreSQL
 	pgEnv := environment.GetPostgreSQLEnvironment()
-	pgPort := 5432
-	if pgEnv.Port != "" {
-		if parsedPort, parseErr := strconv.Atoi(pgEnv.Port); parseErr == nil {
-			pgPort = parsedPort
-		}
-	}
 
-	err = database.InitPostgreSQL(pgEnv.Host, pgEnv.User, pgEnv.Password, pgEnv.Database, pgPort, pgEnv.SSLMode)
+	db, err = database.InitPostgreSQL(pgEnv.Host, pgEnv.User, pgEnv.Password, pgEnv.Database, pgEnv.Port, pgEnv.SSLMode)
 	if err != nil {
 		panic(fmt.Sprintf("Предупреждение: не удалось подключиться к PostgreSQL: %v", err))
 	} else {
-		defer database.ClosePostgreSQL()
+		defer database.ClosePostgreSQL(db)
 
-		err = database.AutoMigrate()
+		err = database.AutoMigrate(db)
 		if err != nil {
 			log.Printf("Предупреждение: не удалось выполнить миграцию PostgreSQL: %v", err)
 		}
 	}
 
+	sync, redisRep, pgRep := sync.NewSyncService(redis, ctx, db)
+
 	log.Printf("Обновляем админские права пользователей из переменной окружения ADMINS...")
-	err = database.RefreshAllAdminStatusSync()
+	err = sync.RefreshAllUsersAdminStatus()
 	if err != nil {
 		log.Printf("Предупреждение: не удалось обновить админские права: %v", err)
 	}
@@ -104,9 +110,9 @@ func main() {
 		moscowTZ := time.FixedZone("Moscow", 3*60*60)
 
 		var lastQuizDate time.Time
-		todayQuiz, lastQuizDate = activities.GetQuizData()
+		todayQuiz, lastQuizDate = activities.GetQuizData(pgRep)
 
-		if wasQuiz, err := database.GetQuizAlreadyWasSync(); err == nil {
+		if wasQuiz, err := pgRep.GetQuizAlreadyWas(); err == nil {
 			quizAlreadyWas = wasQuiz
 			if wasQuiz {
 				log.Printf("Квиз сегодня уже был проведен")
@@ -122,15 +128,15 @@ func main() {
 			today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, moscowTZ)
 
 			if !today.Equal(lastQuizDate) {
-				todayQuiz = activities.GetNewQuiz()
+				todayQuiz = activities.GetNewQuiz(pgRep)
 				quizAlreadyWas = false
 				lastQuizDate = today
 			}
 
 			if todayQuiz.QuizTime.IsZero() {
 				todayQuiz.QuizTime = activities.EstimateQuizTime()
-				if err := database.SaveQuizDataSync(todayQuiz.Quote, todayQuiz.SongName, todayQuiz.QuizTime); err != nil {
-					log.Printf("Ошибка сохранения времени квиза в Redis: %v", err)
+				if err := pgRep.SaveQuizData(todayQuiz.Quote, todayQuiz.SongName, todayQuiz.QuizTime); err != nil {
+					log.Printf("Ошибка сохранения времени квиза: %v", err)
 				}
 			}
 
@@ -144,7 +150,7 @@ func main() {
 					todayQuiz.SongName = songName
 				}
 
-				admins.RemovePref(bot, &tele.Chat{ID: quizChatID})
+				admins.RemovePref(bot, &tele.Chat{ID: quizChatID}, sync)
 
 				quizRunning = true
 				log.Printf("Starting quiz in chat %d", quizChatID)
@@ -168,7 +174,7 @@ func main() {
 	go func() {
 		for {
 			time.Sleep(10 * time.Minute)
-			err := redisClient.CleanupExpiredKeys()
+			err := redisRep.CleanupExpiredKeys()
 			if err != nil {
 				log.Printf("Error during cleanup: %v", err)
 			}
@@ -187,21 +193,31 @@ func main() {
 
 		userID := c.Message().Sender.ID
 		isReply := c.Message().IsReply()
+		appeal := "@" + c.Message().Sender.Username
+		if appeal == "@" {
+			appeal = c.Message().Sender.FirstName
+		}
 		var replyToID int64
-		var replyToUserData *redisClient.UserData
+		var replyToUserData domain.User
+		var replyToAppeal string
 
 		if isReply {
 			replyToID = c.Message().ReplyTo.Sender.ID
+			replyToAppeal = "@" + c.Message().ReplyTo.Sender.Username
+			if replyToAppeal == "@" {
+				replyToAppeal = c.Message().ReplyTo.Sender.FirstName
+			}
 		}
 
-		userData, err := database.GetUserSync(userID)
+		userData, err := sync.GetUser(userID)
 		if err != nil {
 			log.Printf("Failed to get user data: %v", err)
 			return nil
 		}
-		if userData.Username != c.Message().Sender.Username {
+		if userData.Username != c.Message().Sender.Username || userData.FirstName != c.Message().Sender.FirstName {
 			userData.Username = c.Message().Sender.Username
-			if err := database.SetUserSync(userID, userData); err != nil {
+			userData.FirstName = c.Message().Sender.FirstName
+			if err := sync.SaveUser(&userData); err != nil {
 				log.Printf("Failed to save persistent username update for user %d: %v", userID, err)
 			}
 		}
@@ -218,21 +234,21 @@ func main() {
 			}
 
 			userData.Status = "active"
-			if err := database.SetUserSync(userID, userData); err != nil {
+			if err := sync.SaveUser(&userData); err != nil {
 				log.Printf("Failed to save persistent status update for user %d: %v", userID, err)
 			}
-			messages.SendMessage(c, fmt.Sprintf("@%s, тебя разбанили, но это можно исправить. Веди себя хорошо", userData.Username), messageThreadID)
+			messages.ReplyMessage(c, fmt.Sprintf("%s, тебя разбанили, но это можно исправить. Веди себя хорошо", appeal), messageThreadID)
 		}
 
 		if isReply {
-			replyToUserData, err = database.GetUserSync(replyToID)
+			replyToUserData, err = sync.GetUser(replyToID)
 			if err != nil {
 				log.Printf("Failed to get reply to user data: %v", err)
 				return nil
 			}
 			if replyToUserData.Username != c.Message().ReplyTo.Sender.Username {
 				replyToUserData.Username = c.Message().ReplyTo.Sender.Username
-				if err := database.SetUserSync(replyToID, replyToUserData); err != nil {
+				if err := sync.SaveUser(&replyToUserData); err != nil {
 					log.Printf("Failed to save persistent username update for reply user %d: %v", replyToID, err)
 				}
 			}
@@ -242,16 +258,16 @@ func main() {
 			switch c.Message().Text {
 			case "Предупреждение", "предупреждение", "ПРЕДУПРЕЖДЕНИЕ":
 				if isReply {
-					if err := database.UpdateUserWarnsSync(replyToID, 1); err != nil {
+					if err := sync.UpdateUserWarns(replyToID, 1); err != nil {
 						log.Printf("Failed to save warns increase for user %d: %v", replyToID, err)
 					} else {
 						replyToUserData.Warns++
 					}
 					var text string
 					if strings.EqualFold(c.Message().ReplyTo.Text, "Лена") {
-						text = textcases.GetWarnCase(c.Message().ReplyTo.Sender.Username, true)
+						text = textcases.GetWarnCase(replyToAppeal, true)
 					} else {
-						text = textcases.GetWarnCase(c.Message().ReplyTo.Sender.Username, false)
+						text = textcases.GetWarnCase(replyToAppeal, false)
 					}
 					return messages.ReplyToOriginalMessage(c, text, messageThreadID)
 				} else {
@@ -268,9 +284,9 @@ func main() {
 					}
 					user := c.Message().ReplyTo.Sender
 					chatMember := &tele.ChatMember{User: user, Role: tele.Member}
-					admins.BanUser(bot, c.Message().Chat, chatMember)
+					admins.BanUser(bot, c.Message().Chat, chatMember, sync)
 					bot.Delete(c.Message().ReplyTo)
-					return messages.ReplyMessage(c, fmt.Sprintf("@%s идет нахуй из чатика", user.Username), messageThreadID)
+					return messages.ReplyMessage(c, fmt.Sprintf("%s идет нахуй из чатика", replyToAppeal), messageThreadID)
 				} else {
 					return messages.ReplyMessage(c, "Банхаммер готов. Кого послать нахуй?", messageThreadID)
 				}
@@ -283,8 +299,8 @@ func main() {
 					chatMember := &tele.ChatMember{User: user, Role: tele.Member, Rights: tele.Rights{
 						CanSendMessages: false,
 					}}
-					admins.MuteUser(bot, c.Chat(), chatMember)
-					return messages.ReplyMessage(c, fmt.Sprintf("@%s помолчит полчасика и подумает о своем поведении", replyToUserData.Username), messageThreadID)
+					admins.MuteUser(bot, c.Chat(), chatMember, sync)
+					return messages.ReplyMessage(c, fmt.Sprintf("%s помолчит полчасика и подумает о своем поведении", replyToAppeal), messageThreadID)
 				} else {
 					return messages.ReplyMessage(c, "Кого мутить?", messageThreadID)
 				}
@@ -293,8 +309,8 @@ func main() {
 					chatMember := &tele.ChatMember{User: c.Message().ReplyTo.Sender, Role: tele.Member, Rights: tele.Rights{
 						CanSendMessages: true,
 					}}
-					admins.UnmuteUser(bot, c.Chat(), chatMember)
-					return messages.ReplyMessage(c, fmt.Sprintf("@%s размучен. А то че как воды в рот набрал", replyToUserData.Username), messageThreadID)
+					admins.UnmuteUser(bot, c.Chat(), chatMember, sync)
+					return messages.ReplyMessage(c, fmt.Sprintf("%s размучен. А то че как воды в рот набрал", replyToAppeal), messageThreadID)
 				} else {
 					return messages.ReplyMessage(c, "Кого размутить?", messageThreadID)
 				}
@@ -304,12 +320,12 @@ func main() {
 						return messages.ReplyMessage(c, "Ты не можешь банить других админов, соси писос", messageThreadID)
 					}
 					user := c.Message().ReplyTo.Sender
-					messages.ReplyToOriginalMessage(c, fmt.Sprintf("@%s, скажи ауфидерзейн своим нацистским яйцам!", user.Username), messageThreadID)
+					messages.ReplyToOriginalMessage(c, fmt.Sprintf("%s, скажи ауфидерзейн своим нацистским яйцам!", replyToAppeal), messageThreadID)
 					time.Sleep(1 * time.Second)
 					chatMember := &tele.ChatMember{User: user, Role: tele.Member}
-					admins.BanUser(bot, c.Message().Chat, chatMember)
+					admins.BanUser(bot, c.Message().Chat, chatMember, sync)
 					bot.Delete(c.Message().ReplyTo)
-					return messages.ReplyMessage(c, fmt.Sprintf("@%s идет нахуй из чатика", user.Username), messageThreadID)
+					return messages.ReplyMessage(c, fmt.Sprintf("%s идет нахуй из чатика", replyToAppeal), messageThreadID)
 				} else {
 					return messages.ReplyMessage(c, "Кому яйца жмут?", messageThreadID)
 				}
@@ -318,12 +334,13 @@ func main() {
 		switch c.Message().Text {
 		case "Инфа", "инфа", "/info":
 			text := textcases.GetInfo()
-			return messages.SendMessage(c, text, messageThreadID)
+			return messages.ReplyMessage(c, text, messageThreadID)
 		case "Админ", "админ", "/report":
+			log.Printf("Got an admin command from %d", userData.UserID)
 			if isReply {
-				return messages.ReplyToOriginalMessage(c, textcases.GetAdminsCommand(userData.Username, adminsUsernames), messageThreadID)
+				return messages.ReplyToOriginalMessage(c, textcases.GetAdminsCommand(appeal, adminsUsernames), messageThreadID)
 			} else {
-				return messages.SendMessage(c, textcases.GetAdminsCommand(userData.Username, adminsUsernames), messageThreadID)
+				return messages.ReplyMessage(c, textcases.GetAdminsCommand(appeal, adminsUsernames), messageThreadID)
 			}
 		case "Преды", "преды", "/warns":
 			switch {
@@ -346,13 +363,13 @@ func main() {
 			if strings.EqualFold(c.Message().Text, todayQuiz.SongName) {
 				quizRunning = false
 				quizAlreadyWas = true
-				database.SetQuizAlreadyWasSync()
+				pgRep.SetQuizAlreadyWas()
 				winnerTitle := textcases.GetRandomTitle()
 				messages.ReplyMessage(c, fmt.Sprintf("Правильно! Песня: %s", todayQuiz.SongName), messageThreadID)
 				time.Sleep(100 * time.Millisecond)
-				messages.ReplyMessage(c, fmt.Sprintf("Поздравляем, %s! Ты победил и получил титул %s до следующего квиза!", c.Message().Sender.Username, winnerTitle), messageThreadID)
+				messages.ReplyMessage(c, fmt.Sprintf("Поздравляем, %s! Ты победил и получил титул %s до следующего квиза!", appeal, winnerTitle), messageThreadID)
 				chatMember := &tele.ChatMember{User: c.Message().Sender, Role: tele.Member}
-				admins.SetPref(bot, c.Chat(), chatMember, winnerTitle)
+				admins.SetPref(bot, c.Chat(), chatMember, winnerTitle, sync)
 			}
 		}
 		return nil
@@ -366,19 +383,25 @@ func main() {
 			return nil
 		}
 
-		userData, err := database.GetUserSync(joinedUser.ID)
+		userData, err := sync.GetUser(joinedUser.ID)
 		if err != nil {
 			log.Printf("Failed to get user data: %v", err)
 			return nil
 		}
-		if userData.Username != joinedUser.Username {
+		if userData.Username != joinedUser.Username || userData.FirstName != joinedUser.FirstName {
 			userData.Username = joinedUser.Username
-			if err := database.SetUserSync(joinedUser.ID, userData); err != nil {
+			userData.FirstName = joinedUser.FirstName
+			if err := sync.SaveUser(&userData); err != nil {
 				log.Printf("Failed to save persistent username update for joined user %d: %v", joinedUser.ID, err)
 			}
 		}
 
-		return messages.SendMessage(c, fmt.Sprintf(`Добро пожаловать, @%s! Ты присоединился к чатику братства нежити. Напиши команду "Инфа", чтобы узнать, как тут все устроено`, userData.Username), c.Message().ThreadID)
+		appeal := "@" + joinedUser.Username
+		if appeal == "@" {
+			appeal = joinedUser.FirstName
+		}
+
+		return messages.ReplyMessage(c, fmt.Sprintf(`Добро пожаловать, %s! Ты присоединился к чатику братства нежити. Напиши команду "Инфа", чтобы узнать, как тут все устроено`, appeal), c.Message().ThreadID)
 	})
 
 	bot.Handle(tele.OnDice, func(c tele.Context) error {

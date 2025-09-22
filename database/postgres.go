@@ -9,41 +9,46 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-var (
-	DB *gorm.DB
-)
+type PostgresRepository struct {
+	db *gorm.DB
+}
+
+func NewPostgresRepository(db *gorm.DB) *PostgresRepository {
+	return &PostgresRepository{db: db}
+}
 
 // Инициализировать подключение к PostgreSQL
-func InitPostgreSQL(host, user, password, dbname string, port int, sslmode string) error {
+func InitPostgreSQL(host, user, password, dbname string, port int, sslmode string) (*gorm.DB, error) {
 	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%d sslmode=%s TimeZone=Europe/Moscow",
 		host, user, password, dbname, port, sslmode)
 
+	var db *gorm.DB
 	var err error
-	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
+	db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to connect to PostgreSQL: %v", err)
+		return db, fmt.Errorf("failed to connect to PostgreSQL: %v", err)
 	}
 
-	sqlDB, err := DB.DB()
+	sqlDB, err := db.DB()
 	if err != nil {
-		return fmt.Errorf("failed to get SQL DB instance: %v", err)
+		return db, fmt.Errorf("failed to get SQL DB instance: %v", err)
 	}
 
 	err = sqlDB.Ping()
 	if err != nil {
-		return fmt.Errorf("failed to ping PostgreSQL: %v", err)
+		return db, fmt.Errorf("failed to ping PostgreSQL: %v", err)
 	}
 
 	log.Println("Successfully connected to PostgreSQL")
-	return nil
+	return db, nil
 }
 
 // Закрыть подключение к PostgreSQL
-func ClosePostgreSQL() error {
-	if DB != nil {
-		sqlDB, err := DB.DB()
+func ClosePostgreSQL(db *gorm.DB) error {
+	if db != nil {
+		sqlDB, err := db.DB()
 		if err != nil {
 			return err
 		}
@@ -53,12 +58,12 @@ func ClosePostgreSQL() error {
 }
 
 // Выполнить автоматическую миграцию всех моделей
-func AutoMigrate() error {
+func AutoMigrate(db *gorm.DB) error {
 	log.Println("Starting database migration...")
 
-	err := DB.AutoMigrate(
-		&User{},
-		&Quiz{},
+	err := db.AutoMigrate(
+		&UserPostgres{},
+		&QuizPostgres{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to migrate database: %v", err)
@@ -69,39 +74,39 @@ func AutoMigrate() error {
 }
 
 // Получить статистику базы данных
-func GetDatabaseStats() (map[string]interface{}, error) {
+func (p *PostgresRepository) GetDatabaseStats() (map[string]interface{}, error) {
 	stats := make(map[string]interface{})
 
 	var userCount int64
-	err := DB.Model(&User{}).Count(&userCount).Error
+	err := p.db.Model(&UserPostgres{}).Count(&userCount).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to count users: %v", err)
 	}
 	stats["total_users"] = userCount
 
 	var activeUserCount int64
-	err = DB.Model(&User{}).Where("status = ?", "active").Count(&activeUserCount).Error
+	err = p.db.Model(&UserPostgres{}).Where("status = ?", "active").Count(&activeUserCount).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to count active users: %v", err)
 	}
 	stats["active_users"] = activeUserCount
 
 	var adminCount int64
-	err = DB.Model(&User{}).Where("is_admin = ?", true).Count(&adminCount).Error
+	err = p.db.Model(&UserPostgres{}).Where("is_admin = ?", true).Count(&adminCount).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to count admins: %v", err)
 	}
 	stats["admin_users"] = adminCount
 
 	var quizCount int64
-	err = DB.Model(&Quiz{}).Count(&quizCount).Error
+	err = p.db.Model(&QuizPostgres{}).Count(&quizCount).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to count quizzes: %v", err)
 	}
 	stats["total_quizzes"] = quizCount
 
 	var activeQuizCount int64
-	err = DB.Model(&Quiz{}).Where("is_active = ?", true).Count(&activeQuizCount).Error
+	err = p.db.Model(&QuizPostgres{}).Where("is_active = ?", true).Count(&activeQuizCount).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to count active quizzes: %v", err)
 	}
@@ -111,12 +116,12 @@ func GetDatabaseStats() (map[string]interface{}, error) {
 }
 
 // Проверить состояние подключения к базе данных
-func HealthCheck() error {
-	if DB == nil {
+func (p *PostgresRepository) HealthCheck() error {
+	if p.db == nil {
 		return fmt.Errorf("database connection is nil")
 	}
 
-	sqlDB, err := DB.DB()
+	sqlDB, err := p.db.DB()
 	if err != nil {
 		return fmt.Errorf("failed to get SQL DB instance: %v", err)
 	}
@@ -130,12 +135,12 @@ func HealthCheck() error {
 }
 
 // Настроить пул соединений
-func SetConnectionPool(maxIdleConns, maxOpenConns int) error {
-	if DB == nil {
+func (p *PostgresRepository) SetConnectionPool(maxIdleConns, maxOpenConns int) error {
+	if p.db == nil {
 		return fmt.Errorf("database connection is nil")
 	}
 
-	sqlDB, err := DB.DB()
+	sqlDB, err := p.db.DB()
 	if err != nil {
 		return fmt.Errorf("failed to get SQL DB instance: %v", err)
 	}

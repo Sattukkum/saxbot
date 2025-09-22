@@ -10,7 +10,7 @@ import (
 type MainEnvironment struct {
 	Token           string
 	RedisHost       string
-	RedisPort       string
+	RedisPort       int
 	RedisDB         int
 	AllowedChats    []int64
 	Admins          []int64
@@ -20,7 +20,7 @@ type MainEnvironment struct {
 
 type PostgreSQLEnvironment struct {
 	Host     string
-	Port     string
+	Port     int
 	User     string
 	Password string
 	Database string
@@ -40,13 +40,14 @@ func GetMainEnvironment() MainEnvironment {
 	allowedChats := getAllowedChats()
 	admins := GetAdmins()
 	redisDB := getRedisDB()
+	redisPort := getRedisPort()
 	quizChatID := getQuizChatID()
 	adminUsernames := getAdminsUsernames()
 
 	return MainEnvironment{
 		Token:           os.Getenv("BOT_TOKEN"),
 		RedisHost:       os.Getenv("REDIS_HOST"),
-		RedisPort:       os.Getenv("REDIS_PORT"),
+		RedisPort:       redisPort,
 		RedisDB:         redisDB,
 		AllowedChats:    allowedChats,
 		Admins:          admins,
@@ -66,9 +67,10 @@ func GetDataEnvironment() DataEnvironment {
 }
 
 func GetPostgreSQLEnvironment() PostgreSQLEnvironment {
-	port := os.Getenv("POSTGRES_PORT")
-	if port == "" {
-		port = "5432"
+	portStr := os.Getenv("POSTGRES_PORT")
+	port, err := strconv.Atoi(portStr)
+	if err != nil || port == 0 {
+		port = 5432
 	}
 
 	host := os.Getenv("POSTGRES_HOST")
@@ -170,6 +172,20 @@ func getRedisDB() int {
 		return 0
 	}
 	return redisDBInt
+}
+
+func getRedisPort() int {
+	redisPort := os.Getenv("REDIS_PORT")
+	if redisPort == "" {
+		log.Printf("REDIS_PORT environment variable is empty")
+		return 0
+	}
+	redisPortInt, err := strconv.Atoi(redisPort)
+	if err != nil {
+		log.Printf("Failed to parse REDIS_PORT environment variable: %v", err)
+		return 0
+	}
+	return redisPortInt
 }
 
 func getQuizChatID() int64 {

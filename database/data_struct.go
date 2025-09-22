@@ -7,9 +7,9 @@ import (
 )
 
 // User представляет пользователя бота в Postgres
-type User struct {
-	ID        uint           `gorm:"primaryKey" json:"id"`
-	UserID    int64          `gorm:"uniqueIndex;not null" json:"user_id"`
+type UserPostgres struct {
+	UserID    int64          `gorm:"primaryKey" json:"user_id"`
+	FirstName string         `gorm:"size:255" json:"first_name"`
 	Username  string         `gorm:"size:255" json:"username"`
 	IsAdmin   bool           `gorm:"default:false" json:"is_admin"`
 	Warns     int            `gorm:"default:0" json:"warns"`
@@ -22,7 +22,7 @@ type User struct {
 }
 
 // Quiz представляет данные квиза в Postgres
-type Quiz struct {
+type QuizPostgres struct {
 	ID        uint           `gorm:"primaryKey" json:"id"`
 	Date      time.Time      `gorm:"uniqueIndex;not null" json:"date"` // Дата квиза (без времени)
 	Quote     string         `gorm:"type:text;not null" json:"quote"`
@@ -34,22 +34,10 @@ type Quiz struct {
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
 }
 
-// TableName возвращает имя таблицы для User
-func (User) TableName() string {
+func (UserPostgres) TableName() string {
 	return "users"
 }
 
-// TableName возвращает имя таблицы для Quiz
-func (Quiz) TableName() string {
+func (QuizPostgres) TableName() string {
 	return "quizzes"
-}
-
-// Проверить, является ли пользователь администратором
-func (u *User) IsAdminUser() bool {
-	return u.IsAdmin
-}
-
-// Проверить, заблокирован ли пользователь
-func (u *User) IsBanned() bool {
-	return u.Status == "banned"
 }
