@@ -1,0 +1,28 @@
+from datetime import date
+import json
+import os
+
+STATE_FILE = "quiz_state.json"
+
+def load_quiz_state():
+    if os.path.exists(STATE_FILE):
+        with open(STATE_FILE, "r") as f:
+            return json.load(f)
+    return {"last_quiz_date": None}
+
+def save_quiz_state(state):
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f)
+
+def quiz_already_done_today():
+    state = load_quiz_state()
+    return state.get("last_quiz_date") == str(date.today())
+
+def mark_quiz_done_today():
+    state = {"last_quiz_date": str(date.today())}
+    save_quiz_state(state)
+if not quiz_already_done_today():
+    start_quiz()  # запускаем квиз
+    mark_quiz_done_today()
+else:
+    print("Квиз уже был сегодня, пропускаем.")
