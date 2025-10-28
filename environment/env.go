@@ -9,9 +9,6 @@ import (
 
 type MainEnvironment struct {
 	Token           string
-	RedisHost       string
-	RedisPort       int
-	RedisDB         int
 	AllowedChats    []int64
 	Admins          []int64
 	AdminsUsernames []string
@@ -33,23 +30,18 @@ type DataEnvironment struct {
 	VkLink      string
 	DonateLink  string
 	BoostLink   string
+	ConcertLink string
 }
 
 func GetMainEnvironment() MainEnvironment {
 
 	allowedChats := getAllowedChats()
 	admins := GetAdmins()
-	redisDB := getRedisDB()
-	redisHost := getRedisHost()
-	redisPort := getRedisPort()
 	quizChatID := getQuizChatID()
 	adminUsernames := getAdminsUsernames()
 
 	return MainEnvironment{
 		Token:           os.Getenv("BOT_TOKEN"),
-		RedisHost:       redisHost,
-		RedisPort:       redisPort,
-		RedisDB:         redisDB,
 		AllowedChats:    allowedChats,
 		Admins:          admins,
 		AdminsUsernames: adminUsernames,
@@ -64,6 +56,7 @@ func GetDataEnvironment() DataEnvironment {
 		VkLink:      os.Getenv("VK_LINK"),
 		DonateLink:  os.Getenv("DONATE_LINK"),
 		BoostLink:   os.Getenv("BOOST_LINK"),
+		ConcertLink: os.Getenv("CONCERT_LINK"),
 	}
 }
 
@@ -159,42 +152,6 @@ func getAdminsUsernames() []string {
 	}
 	adminsUsernamesSlice := strings.Split(adminsUsernames, ",")
 	return adminsUsernamesSlice
-}
-
-func getRedisDB() int {
-	redisDB := os.Getenv("REDIS_DB")
-	if redisDB == "" {
-		log.Printf("REDIS_DB environment variable is empty")
-		return 0
-	}
-	redisDBInt, err := strconv.Atoi(redisDB)
-	if err != nil {
-		log.Printf("Failed to parse REDIS_DB environment variable: %v", err)
-		return 0
-	}
-	return redisDBInt
-}
-
-func getRedisHost() string {
-	redisHost := os.Getenv("REDIS_HOST")
-	if redisHost == "" {
-		return "localhost"
-	}
-	return redisHost
-}
-
-func getRedisPort() int {
-	redisPort := os.Getenv("REDIS_PORT")
-	if redisPort == "" {
-		log.Printf("REDIS_PORT environment variable is empty")
-		return 6379 // default value
-	}
-	redisPortInt, err := strconv.Atoi(redisPort)
-	if err != nil {
-		log.Printf("Failed to parse REDIS_PORT environment variable: %v", err)
-		return 6379
-	}
-	return redisPortInt
 }
 
 func getQuizChatID() int64 {

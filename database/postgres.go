@@ -62,8 +62,9 @@ func AutoMigrate(db *gorm.DB) error {
 	log.Println("Starting database migration...")
 
 	err := db.AutoMigrate(
-		&UserPostgres{},
-		&QuizPostgres{},
+		&User{},
+		&Quiz{},
+		&Admin{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to migrate database: %v", err)
@@ -78,35 +79,35 @@ func (p *PostgresRepository) GetDatabaseStats() (map[string]interface{}, error) 
 	stats := make(map[string]interface{})
 
 	var userCount int64
-	err := p.db.Model(&UserPostgres{}).Count(&userCount).Error
+	err := p.db.Model(&User{}).Count(&userCount).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to count users: %v", err)
 	}
 	stats["total_users"] = userCount
 
 	var activeUserCount int64
-	err = p.db.Model(&UserPostgres{}).Where("status = ?", "active").Count(&activeUserCount).Error
+	err = p.db.Model(&User{}).Where("status = ?", "active").Count(&activeUserCount).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to count active users: %v", err)
 	}
 	stats["active_users"] = activeUserCount
 
 	var adminCount int64
-	err = p.db.Model(&UserPostgres{}).Where("is_admin = ?", true).Count(&adminCount).Error
+	err = p.db.Model(&User{}).Where("is_admin = ?", true).Count(&adminCount).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to count admins: %v", err)
 	}
 	stats["admin_users"] = adminCount
 
 	var quizCount int64
-	err = p.db.Model(&QuizPostgres{}).Count(&quizCount).Error
+	err = p.db.Model(&Quiz{}).Count(&quizCount).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to count quizzes: %v", err)
 	}
 	stats["total_quizzes"] = quizCount
 
 	var activeQuizCount int64
-	err = p.db.Model(&QuizPostgres{}).Where("is_active = ?", true).Count(&activeQuizCount).Error
+	err = p.db.Model(&Quiz{}).Where("is_active = ?", true).Count(&activeQuizCount).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to count active quizzes: %v", err)
 	}

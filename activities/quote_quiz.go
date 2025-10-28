@@ -14,14 +14,15 @@ type QuoteQuiz struct {
 	QuizTime time.Time
 }
 
+// Используем московское время (UTC+3)
+var MoscowTZ = time.FixedZone("Moscow", 3*60*60)
+
 func EstimateQuizTime() time.Time {
-	// Используем московское время (UTC+3)
-	moscowTZ := time.FixedZone("Moscow", 3*60*60)
-	now := time.Now().In(moscowTZ)
+	now := time.Now().In(MoscowTZ)
 
 	randomHour := rand.Intn(11) + 10
 
-	quizTime := time.Date(now.Year(), now.Month(), now.Day(), randomHour, 0, 0, 0, moscowTZ)
+	quizTime := time.Date(now.Year(), now.Month(), now.Day(), randomHour, 0, 0, 0, MoscowTZ)
 
 	return quizTime
 }
@@ -38,23 +39,34 @@ func GetTodayQuiz() QuoteQuiz {
 }
 
 func GetQuizData(db *database.PostgresRepository) (quiz QuoteQuiz, lastQuizDate time.Time) {
-	if quote, songName, savedTime, pgErr := db.LoadQuizData(); pgErr == nil {
-		moscowTZ := time.FixedZone("Moscow", 3*60*60)
-		QuizTime := savedTime.In(moscowTZ)
-		today := time.Date(savedTime.Year(), savedTime.Month(), savedTime.Day(), 0, 0, 0, 0, moscowTZ)
-		lastQuizDate := today
-		log.Printf("Загружены полные данные квиза из PostgreSQL: Quote='%s', SongName='%s', Time=%s", quote, songName, QuizTime.Format("15:04"))
+	if quiz, pgErr := db.LoadQuizData(); pgErr == nil {
+		QuizTime := quiz.QuizTime.In(MoscowTZ)
+		log.Printf("Загружены полные данные квиза из PostgreSQL: Quote='%s', SongName='%s', Time=%s", quiz.Quote, quiz.SongName, QuizTime.Format("15:04"))
 		quiz := QuoteQuiz{
-			Quote:    quote,
-			SongName: songName,
+			Quote:    quiz.Quote,
+			SongName: quiz.Quote,
 			QuizTime: QuizTime,
 		}
+		previousQuiz, err := db.GetLastCompletedQuiz()
+		if err != nil {
+			log.Printf("failed to get last quiz: %v", err)
+			yesterday := time.Now().In(MoscowTZ).AddDate(0, 0, -1)
+			lastQuizDate = time.Date(yesterday.Year(), yesterday.Month(), yesterday.Day(), 0, 0, 0, 0, MoscowTZ)
+			return quiz, lastQuizDate
+		}
+		lastQuizDate = previousQuiz.Date
 		return quiz, lastQuizDate
 	} else {
-		moscowTZ := time.FixedZone("Moscow", 3*60*60)
-		yesterday := time.Now().In(moscowTZ).AddDate(0, 0, -1)
-		yesterdayDate := time.Date(yesterday.Year(), yesterday.Month(), yesterday.Day(), 0, 0, 0, 0, moscowTZ)
-		return QuoteQuiz{}, yesterdayDate
+		newQuiz := GetNewQuiz(db)
+		previousQuiz, err := db.GetLastCompletedQuiz()
+		if err != nil {
+			log.Printf("failed to get last quiz: %v", err)
+			yesterday := time.Now().In(MoscowTZ).AddDate(0, 0, -1)
+			lastQuizDate = time.Date(yesterday.Year(), yesterday.Month(), yesterday.Day(), 0, 0, 0, 0, MoscowTZ)
+			return newQuiz, lastQuizDate
+		}
+		lastQuizDate = previousQuiz.Date
+		return newQuiz, lastQuizDate
 	}
 }
 

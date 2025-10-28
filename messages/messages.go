@@ -72,3 +72,27 @@ func ReplyMessage(c tele.Context, text string, threadID int) error {
 	}
 	return c.Reply(text)
 }
+
+func ReplyFormattedHTML(c tele.Context, text string, threadID int) error {
+	if threadID != 0 {
+		opts := &tele.SendOptions{
+			ThreadID:  threadID,
+			ReplyTo:   c.Message(),
+			ParseMode: tele.ModeHTML,
+		}
+		_, err := c.Bot().Send(c.Chat(), text, opts)
+		if err != nil {
+			replyOpts := &tele.SendOptions{
+				ReplyTo:   c.Message(),
+				ParseMode: tele.ModeHTML,
+			}
+			_, err2 := c.Bot().Send(c.Chat(), text, replyOpts)
+			if err2 == nil {
+				return nil
+			}
+			return c.Reply(text, &tele.SendOptions{ParseMode: tele.ModeHTML})
+		}
+		return err
+	}
+	return c.Reply(text, &tele.SendOptions{ParseMode: tele.ModeHTML})
+}
