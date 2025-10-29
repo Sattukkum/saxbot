@@ -94,40 +94,40 @@ func main() {
 			log.Printf("Не удалось загрузить данные последнего квиза")
 		}
 
-		lastQuizDate = lastQuiz.Date.In(moscowTZ)
-
-		if !today.After(lastQuizDate) {
-			quizAlreadyWas = true
-			log.Printf("Квиз сегодня уже был проведен")
-		}
-
-		var morningQuiz *database.Quiz
-		if quizAlreadyWas {
-			morningQuiz, err = rep.GetLastCompletedQuiz()
-			if err != nil {
-				log.Printf("Не удалось загрузить существующий квиз: %v", err)
+		if lastQuiz != nil {
+			lastQuizDate = lastQuiz.Date.In(moscowTZ)
+			if !today.After(lastQuizDate) {
+				quizAlreadyWas = true
+				todayQuiz = activities.QuoteQuiz{
+					Quote:    lastQuiz.Quote,
+					SongName: lastQuiz.SongName,
+					QuizTime: lastQuiz.QuizTime,
+				}
+				log.Printf("Квиз сегодня уже был проведен")
 			}
 		}
 
 		quizRunning = false
 
+		// Текущий день для отслеживания смены суток
+		currentDay := today
+
 		for {
 			now = time.Now().In(moscowTZ)
+			// Пересчитываем "сегодня" каждый цикл
+			today = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, moscowTZ)
 
-			sameDay := lastQuizDate.Year() == today.Year() &&
-				lastQuizDate.Month() == today.Month() &&
-				lastQuizDate.Day() == today.Day()
-
-			if !quizAlreadyWas && !sameDay {
-				todayQuiz = activities.GetNewQuiz(rep)
+			// Если наступили новые сутки, сбрасываем состояние квиза
+			if !today.Equal(currentDay) {
+				currentDay = today
 				quizAlreadyWas = false
+				quizRunning = false
+				todayQuiz = activities.QuoteQuiz{}
 			}
 
-			if todayQuiz.QuizTime.IsZero() && morningQuiz.QuizTime.IsZero() {
-				todayQuiz.QuizTime = activities.EstimateQuizTime()
-				if err := rep.SaveQuizData(todayQuiz.Quote, todayQuiz.SongName, todayQuiz.QuizTime); err != nil {
-					log.Printf("Ошибка сохранения времени квиза: %v", err)
-				}
+			// Если на сегодня нет сгенерированного времени квиза и квиз ещё не проводился — создаём
+			if !quizAlreadyWas && todayQuiz.QuizTime.IsZero() {
+				todayQuiz = activities.GetNewQuiz(rep)
 			}
 
 			log.Printf("now: %s, todayQuiz.QuizTime: %s", now.Format("15:04"), todayQuiz.QuizTime.Format("15:04"))
@@ -164,13 +164,16 @@ func main() {
 	// Управление объявлениями
 	go func() {
 		moscowTZ := time.FixedZone("Moscow", 3*60*60)
-
+		var previousTheme int = 1
+		var currentTheme int
+		var imagePath string
+		var caption string
 		for {
 			now := time.Now().In(moscowTZ)
 			from := time.Date(now.Year(), now.Month(), now.Day(), 10, 30, 0, 0, moscowTZ)
 			to := time.Date(now.Year(), now.Month(), now.Day(), 22, 30, 0, 0, moscowTZ)
 			if now.After(from) && now.Before(to) {
-				imagePath, caption := textcases.GetAd()
+				imagePath, caption, currentTheme = textcases.GetAd(previousTheme)
 				log.Printf("imagePath: %s", imagePath)
 				log.Printf("caption: %s", caption)
 				photo := &tele.Photo{
@@ -189,6 +192,7 @@ func main() {
 				log.Printf("Текущее время вне диапазона объявлений, пропускаем... %s", now.Format("15:04"))
 			}
 			time.Sleep(3 * time.Hour)
+			previousTheme = currentTheme
 		}
 	}()
 

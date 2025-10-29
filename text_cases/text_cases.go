@@ -281,7 +281,7 @@ func GetAdminsCommand(user string, admins []string) string {
 	return text
 }
 
-func GetAd() (imagePath string, caption string) {
+func GetAd(previousTheme int) (imagePath string, caption string, currentTheme int) {
 	const (
 		admins  = 6
 		donate  = 5
@@ -308,9 +308,9 @@ func GetAd() (imagePath string, caption string) {
 	}
 
 	var theme string
-	randomizer := r.Intn(4) + 1
+	var randomizer int
 
-	switch randomizer {
+	switch previousTheme {
 	case 1:
 		theme = "admins"
 	case 2:
@@ -320,8 +320,13 @@ func GetAd() (imagePath string, caption string) {
 	case 4:
 		theme = "concert"
 	default:
-		log.Printf("Неожиданный рандомайзер! %d", randomizer)
-		theme = "music"
+		log.Printf("Неожиданная тема! %d", previousTheme)
+		theme = "admins"
+	}
+
+	currentTheme = previousTheme + 1
+	if currentTheme > 4 {
+		currentTheme = 1
 	}
 
 	switch theme {
@@ -341,5 +346,5 @@ func GetAd() (imagePath string, caption string) {
 	caption = captions[theme]
 	imagePath = fmt.Sprintf(imagePaths[theme], randomizer)
 
-	return imagePath, caption
+	return imagePath, caption, currentTheme
 }
