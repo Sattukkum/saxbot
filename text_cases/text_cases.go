@@ -5,7 +5,6 @@ import (
 	"log"
 	"math/rand"
 	"saxbot/environment"
-	"time"
 )
 
 var QuizAnnouncement = "Интерактив! Угадай песню по цитате! Кто первый даст правильный ответ, получит приз!"
@@ -281,15 +280,13 @@ func GetAdminsCommand(user string, admins []string) string {
 	return text
 }
 
-func GetAd(previousTheme int) (imagePath string, caption string, currentTheme int) {
+func GetAd(previousTheme int, r *rand.Rand) (imagePath string, caption string, currentTheme int) {
 	const (
 		admins  = 6
 		donate  = 5
 		music   = 3
 		concert = 1
 	)
-
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	LinksData := environment.GetDataEnvironment()
 

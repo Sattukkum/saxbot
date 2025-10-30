@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"saxbot/activities"
 	"saxbot/admins"
 	"saxbot/database"
@@ -162,6 +163,7 @@ func main() {
 	}()
 
 	// Управление объявлениями
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	go func() {
 		moscowTZ := time.FixedZone("Moscow", 3*60*60)
 		var previousTheme int = 1
@@ -173,7 +175,7 @@ func main() {
 			from := time.Date(now.Year(), now.Month(), now.Day(), 10, 30, 0, 0, moscowTZ)
 			to := time.Date(now.Year(), now.Month(), now.Day(), 22, 30, 0, 0, moscowTZ)
 			if now.After(from) && now.Before(to) {
-				imagePath, caption, currentTheme = textcases.GetAd(previousTheme)
+				imagePath, caption, currentTheme = textcases.GetAd(previousTheme, r)
 				log.Printf("imagePath: %s", imagePath)
 				log.Printf("caption: %s", caption)
 				photo := &tele.Photo{
