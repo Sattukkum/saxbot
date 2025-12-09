@@ -150,7 +150,7 @@ func (p *PostgresRepository) RefreshAllUsersAdminStatus() error {
 }
 
 // Сохранить данные квиза на определенную дату
-func (p *PostgresRepository) SaveQuizData(quote, songName string, quizTime time.Time) error {
+func (p *PostgresRepository) SaveQuizData(quote, songName, screenPath string, isClip bool, quizTime time.Time) error {
 	quizTimeInMoscow := quizTime.In(MoscowTZ)
 	date := time.Date(quizTimeInMoscow.Year(), quizTimeInMoscow.Month(), quizTimeInMoscow.Day(), 0, 0, 0, 0, time.UTC)
 
@@ -163,11 +163,13 @@ func (p *PostgresRepository) SaveQuizData(quote, songName string, quizTime time.
 
 	if err == gorm.ErrRecordNotFound {
 		quiz := Quiz{
-			Date:     date,
-			Quote:    quote,
-			SongName: songName,
-			QuizTime: quizTimeInMoscow,
-			IsActive: true,
+			Date:       date,
+			Quote:      quote,
+			SongName:   songName,
+			QuizTime:   quizTimeInMoscow,
+			IsActive:   true,
+			IsClip:     isClip,
+			ScreenPath: screenPath,
 		}
 
 		err = p.db.Create(&quiz).Error
@@ -181,7 +183,8 @@ func (p *PostgresRepository) SaveQuizData(quote, songName string, quizTime time.
 		existingQuiz.SongName = songName
 		existingQuiz.QuizTime = quizTimeInMoscow
 		existingQuiz.IsActive = true
-
+		existingQuiz.IsClip = isClip
+		existingQuiz.ScreenPath = screenPath
 		err = p.db.Save(&existingQuiz).Error
 		if err != nil {
 			return fmt.Errorf("failed to update quiz: %v", err)
@@ -295,6 +298,9 @@ func (p *PostgresRepository) GetQuizAlreadyWas() (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to check quiz status: %v", err)
 	}
+	if lastQuiz == nil {
+		return false, nil
+	}
 	if date.After(lastQuiz.Date) {
 		return false, nil
 	}
@@ -350,14 +356,19 @@ func (p *PostgresRepository) ForceCompleteQuiz() error {
 	return nil
 }
 
+// Получить ID победителя последнего завершенного квиза
 func (p *PostgresRepository) GetQuizWinnerID() (int64, error) {
 	lastQuiz, err := p.GetLastCompletedQuiz()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get last quiz winner id: %v", err)
 	}
+	if lastQuiz == nil {
+		return 0, nil
+	}
 	return lastQuiz.WinnerID, nil
 }
 
+// Получить всех админов
 func (p *PostgresRepository) GetAdmins() ([]Admin, error) {
 	var admins []Admin
 	err := p.db.Find(&admins).Error
@@ -367,6 +378,7 @@ func (p *PostgresRepository) GetAdmins() ([]Admin, error) {
 	return admins, nil
 }
 
+// Сохранить админа
 func (p *PostgresRepository) SaveAdmin(user User, adminRole string) error {
 	admin := Admin{
 		ID:        user.UserID,
@@ -381,6 +393,7 @@ func (p *PostgresRepository) SaveAdmin(user User, adminRole string) error {
 	return nil
 }
 
+// Проверить, является ли пользователь админом
 func (p *PostgresRepository) IsAdmin(userID int64) bool {
 	var admin Admin
 	err := p.db.Where("id = ?", userID).First(&admin).Error
@@ -390,6 +403,7 @@ func (p *PostgresRepository) IsAdmin(userID int64) bool {
 	return err == nil
 }
 
+// Получить роль админа
 func (p *PostgresRepository) GetAdminRole(userID int64) (string, error) {
 	var admin Admin
 	err := p.db.Where("id = ?", userID).First(&admin).Error
@@ -399,6 +413,7 @@ func (p *PostgresRepository) GetAdminRole(userID int64) (string, error) {
 	return admin.AdminRole, nil
 }
 
+// Удалить админа
 func (p *PostgresRepository) RemoveAdmin(userID int64) error {
 	var admin Admin
 	err := p.db.Where("id = ?", userID).Delete(&admin).Error
@@ -409,11 +424,12 @@ func (p *PostgresRepository) RemoveAdmin(userID int64) error {
 	return nil
 }
 
+// Продвинуть админа
 func (p *PostgresRepository) PromoteAdmin(userID int64, delta string) error {
 	var admin Admin
 	err := p.db.Where("id = ?", userID).First(&admin).Error
 	if err != nil {
-		return fmt.Errorf("failed to get %d from admins: %v", err)
+		return fmt.Errorf("failed to get %d from admins: %v", userID, err)
 	}
 	if delta == "+" && admin.AdminRole == "junior" {
 		admin.AdminRole = "senior"
@@ -427,4 +443,42 @@ func (p *PostgresRepository) PromoteAdmin(userID int64, delta string) error {
 		return err
 	}
 	return nil
+}
+
+// Обновить количество сообщений пользователя
+func (p *PostgresRepository) UpdateUserMessageCount(userID int64, delta int) error {
+	user, err := p.GetUser(userID)
+	if err != nil {
+		return err
+	}
+	user.MessageCount += delta
+	return p.SaveUser(&user)
+}
+
+// Получить количество сообщений пользователя
+func (p *PostgresRepository) GetUserMessageCount(userID int64) (int, error) {
+	user, err := p.GetUser(userID)
+	if err != nil {
+		return 0, err
+	}
+	return user.MessageCount, nil
+}
+
+// Очистить количество сообщений у всех пользователей
+func (p *PostgresRepository) ClearAllUsersMessageCount() error {
+	err := p.db.Model(&User{}).Update("message_count", 0).Error
+	if err != nil {
+		return fmt.Errorf("failed to clear all users message count: %v", err)
+	}
+	return nil
+}
+
+// Получить топ 5 пользователей с наибольшим количеством сообщений
+func (p *PostgresRepository) GetUsersWithTopActivity() ([]User, error) {
+	var users []User
+	err := p.db.Order("message_count DESC").Limit(5).Find(&users).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get users with top activity: %v", err)
+	}
+	return users, nil
 }

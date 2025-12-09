@@ -8,6 +8,7 @@ import (
 )
 
 var QuizAnnouncement = "Интерактив! Угадай песню по цитате! Кто первый даст правильный ответ, получит приз!"
+var QuizClipAnnouncement = "Интерактив! Угадай песню по кадру из клипа! Кто первый даст правильный ответ, получит приз!"
 
 func GetWarnCase(username string, lenaFlag bool) string {
 
@@ -40,7 +41,7 @@ func GetWarnCase(username string, lenaFlag bool) string {
 		fmt.Sprintf("Значит так, %s, я тебя спас и в благородство играть не буду. Выполнишь для меня пару заданий, и мы в расчете. Заодно посмотрим, как быстро у тебя башка после предупреждения прояснится", username),
 		fmt.Sprintf("Волк слабее %s, но предупреждение не получает", username),
 		fmt.Sprintf("Товарищ Берия, занесите в личное дело %s предупреждение", username),
-		fmt.Sprintf("- %s, у тебя есть предуперждение?\n- Лучше! У меня есть рисунок предупреждения", username),
+		fmt.Sprintf("- %s, у тебя есть предупреждение?\n- Лучше! У меня есть рисунок предупреждения", username),
 		fmt.Sprintf("%s, я ненавижу преступность", username),
 		fmt.Sprintf("%s, ты предупреждение получил, должен был косарь отдать. А тут хули так мало?", username),
 		fmt.Sprintf("%s, знаешь, как в Париже называют четвертьфунтовое предупреждение? Они зовут его Роял Предупреждение", username),
@@ -344,4 +345,39 @@ func GetAd(previousTheme int, r *rand.Rand) (imagePath string, caption string, c
 	imagePath = fmt.Sprintf(imagePaths[theme], randomizer)
 
 	return imagePath, caption, currentTheme
+}
+
+var clipScreensDirs = map[string]string{
+	"USSR KID":               "ussr_kid",
+	"Ghost of Communism":     "ghost",
+	"Последний Диктатор":     "boss",
+	"Russian Cyberpunk Rave": "cyberpunk",
+	"Царь":                   "czar",
+	"Домой":                  "domoy",
+	"Каникулы в КНДР":        "kndr",
+	"Goodbye, America":       "goodbye",
+	"Матушка Больна":         "mama",
+	"Мара":                   "mara",
+	"No Money Be Happy":      "no_money",
+	"Красный Кулак":          "red_fist",
+	"Zavod":                  "zavod",
+	"Rocketman":              "rocketman",
+	"Серп и Молот":           "serp_molot",
+	"Village Boy":            "village_boy",
+	"Ядерная Зима":           "zima",
+}
+
+func GetRandomClip() map[string]string {
+	result := make(map[string]string)
+	keys := make([]string, 0, len(clipScreensDirs))
+	for k := range clipScreensDirs {
+		keys = append(keys, k)
+	}
+	if len(keys) == 0 {
+		return result
+	}
+	randomIdx := rand.Intn(len(keys))
+	key := keys[randomIdx]
+	result[key] = clipScreensDirs[key]
+	return result
 }
