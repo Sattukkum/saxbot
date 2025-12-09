@@ -153,7 +153,7 @@ func HandleChatMessage(c tele.Context, chatMessageHandler *ChatMessageHandler) e
 			if isReply {
 				return messages.ReplyToOriginalMessage(c, "Извинись дон. Скажи, что ты был не прав дон. Или имей в виду — на всю оставшуюся жизнь у нас с тобой вражда", messageThreadID)
 			}
-		case "пошел нахуй", "пошла нахуй", "пошёл нахуй", "иди нахуй", "/ban":
+		case "пошел нахуй", "пошла нахуй", "пошёл нахуй", "иди нахуй", "в бан", "/ban":
 			if adminRole == "senior" {
 				if isReply {
 					if replyToAdmin {
@@ -167,6 +167,19 @@ func HandleChatMessage(c tele.Context, chatMessageHandler *ChatMessageHandler) e
 				} else {
 					return messages.ReplyMessage(c, "Банхаммер готов. Кого послать нахуй?", messageThreadID)
 				}
+			}
+		case "рестрикт", "кринж", "/restrict":
+			if adminRole == "senior" {
+				if isReply {
+					if replyToAdmin {
+						return messages.ReplyMessage(c, "Ты не можешь рестриктить других админов, соси писос", messageThreadID)
+					}
+					user := c.Message().ReplyTo.Sender
+					chatMember := &tele.ChatMember{User: user, Role: tele.Member}
+					admins.RestrictUser(chatMessageHandler.Bot, c.Message().Chat, chatMember, chatMessageHandler.Rep)
+					return messages.ReplyMessage(c, fmt.Sprintf("%s рестрикнут. Даже я словил кринж. А я бот ваще-то", replyToAppeal), messageThreadID)
+				}
+				return messages.ReplyMessage(c, "Кого рестриктить?", messageThreadID)
 			}
 		case "размут", "/unmute":
 			if isReply {
@@ -193,6 +206,23 @@ func HandleChatMessage(c tele.Context, chatMessageHandler *ChatMessageHandler) e
 					return messages.ReplyMessage(c, fmt.Sprintf("%s идет нахуй из чатика", replyToAppeal), messageThreadID)
 				} else {
 					return messages.ReplyMessage(c, "Кому яйца жмут?", messageThreadID)
+				}
+			}
+		case "обезглавить", "обоссать", "сжечь":
+			if adminRole == "senior" {
+				if isReply {
+					if replyToAdmin {
+						return messages.ReplyMessage(c, "Ты не можешь банить других админов, соси писос", messageThreadID)
+					}
+					user := c.Message().ReplyTo.Sender
+					messages.ReplyToOriginalMessage(c, "ОБЕЗГЛАВИТЬ ОБОССАТЬ И СЖЕЧЬ!!!", messageThreadID)
+					time.Sleep(1 * time.Second)
+					chatMember := &tele.ChatMember{User: user, Role: tele.Member}
+					admins.BanUser(chatMessageHandler.Bot, c.Message().Chat, chatMember, chatMessageHandler.Rep)
+					chatMessageHandler.Bot.Delete(c.Message().ReplyTo)
+					return messages.ReplyMessage(c, fmt.Sprintf("%s идет нахуй из чатика. АВЕ АВЕ ПИРОМАН!", replyToAppeal), messageThreadID)
+				} else {
+					return messages.ReplyMessage(c, "Пироман готов!", messageThreadID)
 				}
 			}
 		}

@@ -190,3 +190,27 @@ func RemovePref(bot *tele.Bot, chat *tele.Chat, db *database.PostgresRepository)
 	}
 	return nil
 }
+
+// Забрать все права, кроме обычных сообщений
+func RestrictUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, db *database.PostgresRepository) error {
+	userData, err := db.GetUser(user.User.ID)
+	if err != nil {
+		return fmt.Errorf("failed to get user %d: %v", user.User.ID, err)
+	}
+	userData.Status = "restricted"
+	db.SaveUser(&userData)
+	user.Rights = tele.Rights{
+		CanSendMessages:  true,
+		CanSendMedia:     false,
+		CanSendAudios:    false,
+		CanSendVideos:    false,
+		CanSendPhotos:    false,
+		CanSendDocuments: false,
+		CanSendOther:     false,
+	}
+	err = bot.Restrict(chat, user)
+	if err != nil {
+		return fmt.Errorf("failed to restrict user %d: %v", user.User.ID, err)
+	}
+	return nil
+}
