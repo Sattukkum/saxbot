@@ -101,10 +101,10 @@ func main() {
 
 	// Обработка текстовых сообщений
 	bot.Handle(tele.OnText, func(c tele.Context) error {
-		if c.Chat().Type != tele.ChatPrivate {
-			return handlers.HandleChatMessage(c, &chatMessageHandler)
+		if c.Chat().Type == tele.ChatPrivate {
+			return handlers.HandlePrivateMessage(c, &chatMessageHandler)
 		}
-		return nil
+		return handlers.HandleChatMessage(c, &chatMessageHandler)
 	})
 
 	// Обработка событий присоединения пользователей к чату
