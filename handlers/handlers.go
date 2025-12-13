@@ -3,23 +3,11 @@ package handlers
 import (
 	"fmt"
 	"log"
-	"saxbot/activities"
-	"saxbot/database"
 	"saxbot/messages"
 	"slices"
 
 	tele "gopkg.in/telebot.v4"
 )
-
-type ChatMessageHandler struct {
-	AllowedChats    []int64
-	AdminsList      []int64
-	AdminsUsernames []string
-	QuizManager     *activities.QuizManager
-	Rep             *database.PostgresRepository
-	Bot             *tele.Bot
-	ChatMessage     *ChatMessage
-}
 
 func HandleChatMessage(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
 	log.Printf("Received message: '%s' from user %d in chat %d", c.Message().Text, c.Message().Sender.ID, c.Message().Chat.ID)
