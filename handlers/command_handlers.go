@@ -12,6 +12,21 @@ import (
 	tele "gopkg.in/telebot.v4"
 )
 
+// isBirthdayFormat проверяет, соответствует ли строка формату даты DD.MM.YYYY
+func isBirthdayFormat(text string) bool {
+	if len(text) != 10 {
+		return false
+	}
+	// Простая проверка формата: DD.MM.YYYY (10 символов)
+	// Проверяем, что на позициях 2 и 5 стоят точки
+	if text[2] != '.' || text[5] != '.' {
+		return false
+	}
+	// Пытаемся распарсить дату
+	_, err := time.Parse("02.01.2006", text)
+	return err == nil
+}
+
 func handleWarn(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
 	chatMsg := chatMessageHandler.ChatMessage
 	if chatMsg == nil {
@@ -270,4 +285,52 @@ func handleWarns(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
 	}
 
 	return nil
+}
+
+func handleSaveBirthday(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
+	chatMessageHandler.CurrentState = "default"
+	chatMsg := chatMessageHandler.ChatMessage
+	if chatMsg == nil {
+		return fmt.Errorf("chat message is nil")
+	}
+	userData := chatMsg.UserData()
+	if userData == nil {
+		return fmt.Errorf("user data is nil")
+	}
+	birthday := chatMsg.Text()
+	if birthday == "" {
+		return messages.ReplyMessage(c, "Введите дату рождения в формате DD.MM.YYYY", chatMsg.ThreadID())
+	}
+	birthdayTime, err := time.Parse("02.01.2006", birthday)
+	if err != nil {
+		return messages.ReplyMessage(c, "Неверный формат даты. Пожалуйста, используйте DD.MM.YYYY", chatMsg.ThreadID())
+	}
+	if err := chatMessageHandler.Rep.UpdateUserBirthday(userData.UserID, birthdayTime); err != nil {
+		return messages.ReplyMessage(c, "Не удалось сохранить дату рождения", chatMsg.ThreadID())
+	}
+	return messages.ReplyMessage(c, fmt.Sprintf("Дата рождения %s сохранена", birthdayTime.Format("02.01.2006")), chatMsg.ThreadID())
+}
+
+// handleShowBirthdayMenu показывает инлайн-меню с кнопкой для указания даты рождения
+// Доступно только в личных сообщениях
+func handleShowBirthdayMenu(c tele.Context) error {
+	menu := &tele.ReplyMarkup{ResizeKeyboard: true}
+
+	btnBirthday := menu.Data("🎂 Указать дату рождения", "set_birthday")
+	menu.Inline(menu.Row(btnBirthday))
+
+	text := "Выберите действие:"
+	return c.Reply(text, &tele.SendOptions{ReplyMarkup: menu})
+}
+
+// handleBirthdayCallback обрабатывает нажатие на кнопку "Указать дату рождения"
+func handleBirthdayCallback(c tele.Context) error {
+	// Отвечаем на callback, чтобы убрать индикатор загрузки
+	if err := c.Respond(); err != nil {
+		return err
+	}
+
+	// Просим пользователя ввести дату рождения
+	text := "Пожалуйста, введите дату рождения в формате DD.MM.YYYY (например, 15.03.1990)"
+	return c.Send(text)
 }

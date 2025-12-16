@@ -14,6 +14,7 @@ type User struct {
 	Warns        int            `gorm:"default:0" json:"warns"`
 	Status       string         `gorm:"size:50;default:'active'" json:"status"`
 	MessageCount int            `gorm:"default:0" json:"message_count"`
+	Birthday     time.Time      `gorm:"default:null" json:"birthday"`
 	CreatedAt    time.Time      `json:"created_at"`
 	UpdatedAt    time.Time      `json:"updated_at"`
 	DeletedAt    gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`

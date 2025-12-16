@@ -5,6 +5,7 @@ import (
 	"log"
 	"saxbot/messages"
 	"slices"
+	"strings"
 
 	tele "gopkg.in/telebot.v4"
 )
@@ -76,7 +77,30 @@ func HandlePrivateMessage(c tele.Context, chatMessageHandler *ChatMessageHandler
 	// Например, можно добавить команды для работы с ботом в личке,
 	// обработку обращений пользователей, статистику и т.д.
 
-	return nil
+	chatMessage, err := initPrivateMessage(c, chatMessageHandler)
+	if err != nil {
+		log.Printf("Failed to initialize chat message: %v", err)
+		return nil
+	}
+	chatMessageHandler.ChatMessage = chatMessage
+
+	// Проверяем статус пользователя
+	userData := chatMessage.UserData()
+	if userData == nil {
+		log.Printf("UserData is nil, skipping message processing")
+		return nil
+	}
+
+	// Определяем, является ли отправитель админом или победителем
+	isAdmin := chatMessageHandler.Rep.IsAdmin(userData.UserID)
+	isWinnerOnly := chatMessage.IsWinner() && !isAdmin && !chatMessage.ChatAdmin()
+	canUseAdminCommands := isAdmin || chatMessage.IsWinner() || chatMessage.ChatAdmin()
+
+	if canUseAdminCommands {
+		return handleAdminPrivateMessage(c, chatMessageHandler, isWinnerOnly)
+	} else {
+		return handleUserPrivateMessage(c, chatMessageHandler)
+	}
 }
 
 func HandleUserJoined(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
@@ -106,4 +130,23 @@ func HandleUserJoined(c tele.Context, chatMessageHandler *ChatMessageHandler) er
 	}
 
 	return messages.ReplyMessage(c, fmt.Sprintf(`Добро пожаловать, %s! Ты присоединился к чатику братства нежити. Напиши команду "Инфа", чтобы узнать, как тут все устроено`, appeal), c.Message().ThreadID)
+}
+
+// HandleCallback обрабатывает колбэки от инлайн-кнопок
+func HandleCallback(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
+	callback := c.Callback()
+	if callback == nil {
+		return fmt.Errorf("callback is nil")
+	}
+
+	log.Printf("Received callback: '%s' from user %d", callback.Data, callback.Sender.ID)
+
+	callbackData := strings.TrimSpace(callback.Data)
+	// Обработка колбэка для установки даты рождения
+	if callbackData == "set_birthday" {
+		chatMessageHandler.CurrentState = "set_birthday"
+		return handleBirthdayCallback(c)
+	}
+
+	return nil
 }

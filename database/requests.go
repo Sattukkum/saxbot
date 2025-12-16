@@ -482,3 +482,21 @@ func (p *PostgresRepository) GetUsersWithTopActivity() ([]User, error) {
 	}
 	return users, nil
 }
+
+func (p *PostgresRepository) GetUserBirthday(userID int64) (time.Time, error) {
+	var user User
+	err := p.db.Where("user_id = ?", userID).First(&user).Error
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to get user birthday: %v", err)
+	}
+	return user.Birthday, nil
+}
+
+func (p *PostgresRepository) UpdateUserBirthday(userID int64, birthday time.Time) error {
+	user, err := p.GetUser(userID)
+	if err != nil {
+		return err
+	}
+	user.Birthday = birthday
+	return p.SaveUser(&user)
+}

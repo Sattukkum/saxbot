@@ -18,6 +18,7 @@ type ChatMessageHandler struct {
 	Rep             *database.PostgresRepository
 	Bot             *tele.Bot
 	ChatMessage     *ChatMessage
+	CurrentState    string
 }
 
 type ChatMessage struct {
@@ -266,7 +267,7 @@ func initChatMessage(c tele.Context, handler *ChatMessageHandler) (*ChatMessage,
 	}
 
 	// Определяем роль админа
-	var adminRole = "junior"
+	var adminRole = ""
 	isAdmin := handler.Rep.IsAdmin(userData.UserID)
 	if isAdmin {
 		adminRole, err = handler.Rep.GetAdminRole(userData.UserID)
@@ -281,6 +282,84 @@ func initChatMessage(c tele.Context, handler *ChatMessageHandler) (*ChatMessage,
 	chatMsg.adminRole = adminRole
 
 	// Проверяем, является ли пользователь победителем квиза
+	isWinner := userData.UserID == handler.QuizManager.Winner()
+	chatMsg.isWinner = isWinner
+
+	return chatMsg, nil
+}
+
+func initPrivateMessage(c tele.Context, handler *ChatMessageHandler) (*ChatMessage, error) {
+	if c == nil {
+		return nil, fmt.Errorf("context is nil")
+	}
+	if handler == nil {
+		return nil, fmt.Errorf("handler is nil")
+	}
+	if handler.Rep == nil {
+		return nil, fmt.Errorf("repository is nil")
+	}
+	if handler.QuizManager == nil {
+		return nil, fmt.Errorf("quiz manager is nil")
+	}
+
+	msg := c.Message()
+	if msg == nil {
+		return nil, fmt.Errorf("message is nil")
+	}
+	if msg.Sender == nil {
+		return nil, fmt.Errorf("message sender is nil")
+	}
+
+	chatMsg := &ChatMessage{
+		sender: msg.Sender,
+		text:   msg.Text,
+		appeal: "@" + msg.Sender.Username,
+	}
+
+	userID := msg.Sender.ID
+	if userID == 0 {
+		return nil, fmt.Errorf("invalid user ID: %d", userID)
+	}
+
+	// Формируем обращение к отправителю
+	appeal := "@" + msg.Sender.Username
+	if appeal == "@" {
+		if msg.Sender.FirstName == "" {
+			appeal = fmt.Sprintf("User %d", msg.Sender.ID)
+		} else {
+			appeal = msg.Sender.FirstName
+		}
+	}
+	chatMsg.appeal = appeal
+
+	userData, err := handler.Rep.GetUser(userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user data for user %d: %w", userID, err)
+	}
+
+	// Обновляем username и firstname, если изменились
+	if userData.Username != msg.Sender.Username || userData.FirstName != msg.Sender.FirstName {
+		userData.Username = msg.Sender.Username
+		userData.FirstName = msg.Sender.FirstName
+		if err := handler.Rep.SaveUser(&userData); err != nil {
+			log.Printf("Failed to save persistent username update for user %d: %v", userID, err)
+			// Не возвращаем ошибку, так как это не критично
+		}
+	}
+	chatMsg.userData = &userData
+
+	var adminRole = ""
+	isAdmin := handler.Rep.IsAdmin(userData.UserID)
+	if isAdmin {
+		adminRole, err = handler.Rep.GetAdminRole(userData.UserID)
+		if err != nil {
+			log.Printf("failed to get admin role for user %d, consider it junior: %v", userData.UserID, err)
+			adminRole = "junior"
+		}
+	}
+	chatMsg.adminRole = adminRole
+
+	// Определяем, является ли пользователь победителем квиза
 	isWinner := userData.UserID == handler.QuizManager.Winner()
 	chatMsg.isWinner = isWinner
 

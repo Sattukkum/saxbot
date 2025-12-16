@@ -97,6 +97,7 @@ func main() {
 		QuizManager:     quizManager,
 		Rep:             rep,
 		Bot:             bot,
+		CurrentState:    "default",
 	}
 
 	// Обработка текстовых сообщений
@@ -110,6 +111,11 @@ func main() {
 	// Обработка событий присоединения пользователей к чату
 	bot.Handle(tele.OnUserJoined, func(c tele.Context) error {
 		return handlers.HandleUserJoined(c, &chatMessageHandler)
+	})
+
+	// Обработка колбэков от инлайн-меню
+	bot.Handle(tele.OnCallback, func(c tele.Context) error {
+		return handlers.HandleCallback(c, &chatMessageHandler)
 	})
 
 	bot.Start()
