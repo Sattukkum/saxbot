@@ -89,6 +89,9 @@ func main() {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	go activities.ManageAds(bot, quizChatID, r)
 
+	// Управление поздравлениями
+	go activities.ManageCongratulations(bot, quizChatID, rep)
+
 	// Инициализация обработчика сообщений чата
 	chatMessageHandler := handlers.ChatMessageHandler{
 		AllowedChats:    allowedChats,
@@ -97,7 +100,7 @@ func main() {
 		QuizManager:     quizManager,
 		Rep:             rep,
 		Bot:             bot,
-		CurrentState:    "default",
+		UserStates:      make(map[int64]string), // Инициализируем map для хранения состояний пользователей
 	}
 
 	// Обработка текстовых сообщений

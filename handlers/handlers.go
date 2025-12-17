@@ -144,7 +144,8 @@ func HandleCallback(c tele.Context, chatMessageHandler *ChatMessageHandler) erro
 	callbackData := strings.TrimSpace(callback.Data)
 	// Обработка колбэка для установки даты рождения
 	if callbackData == "set_birthday" {
-		chatMessageHandler.CurrentState = "set_birthday"
+		userID := callback.Sender.ID
+		chatMessageHandler.SetUserState(userID, "set_birthday")
 		return handleBirthdayCallback(c)
 	}
 

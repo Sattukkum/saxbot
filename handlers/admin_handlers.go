@@ -26,11 +26,6 @@ func handleAdminChatMessage(c tele.Context, chatMessageHandler *ChatMessageHandl
 		return handleWarns(c, chatMessageHandler)
 	}
 
-	// Проверка на формат даты рождения (DD.MM.YYYY)
-	if isBirthdayFormat(chatMsg.Text()) {
-		return handleSaveBirthday(c, chatMessageHandler)
-	}
-
 	// Победитель (не админ) может использовать только "предупреждение" и "извинись"
 	if isWinnerOnly {
 		switch text {
@@ -118,17 +113,19 @@ func handleAdminPrivateMessage(c tele.Context, chatMessageHandler *ChatMessageHa
 		return fmt.Errorf("chat message is nil")
 	}
 	text := strings.ToLower(chatMsg.Text())
+	userID := chatMsg.UserData().UserID
 
 	// Обработка команд в личных сообщениях
 	switch text {
 	case "/start", "меню", "/menu":
 		return handleShowBirthdayMenu(c)
 	case "/state":
-		return messages.ReplyMessage(c, fmt.Sprintf("Текущее состояние: %s", chatMessageHandler.CurrentState), chatMsg.ThreadID())
+		currentState := chatMessageHandler.GetUserState(userID)
+		return messages.ReplyMessage(c, fmt.Sprintf("Текущее состояние: %s", currentState), chatMsg.ThreadID())
 	}
 
 	// Проверка на формат даты рождения (DD.MM.YYYY)
-	if chatMessageHandler.CurrentState == "set_birthday" {
+	if chatMessageHandler.GetUserState(userID) == "set_birthday" {
 		if isBirthdayFormat(chatMsg.Text()) {
 			return handleSaveBirthday(c, chatMessageHandler)
 		} else {

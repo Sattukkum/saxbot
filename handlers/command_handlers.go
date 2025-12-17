@@ -288,7 +288,6 @@ func handleWarns(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
 }
 
 func handleSaveBirthday(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
-	chatMessageHandler.CurrentState = "default"
 	chatMsg := chatMessageHandler.ChatMessage
 	if chatMsg == nil {
 		return fmt.Errorf("chat message is nil")
@@ -297,6 +296,8 @@ func handleSaveBirthday(c tele.Context, chatMessageHandler *ChatMessageHandler) 
 	if userData == nil {
 		return fmt.Errorf("user data is nil")
 	}
+	// Сбрасываем состояние пользователя после сохранения даты рождения
+	chatMessageHandler.SetUserState(userData.UserID, "default")
 	birthday := chatMsg.Text()
 	if birthday == "" {
 		return messages.ReplyMessage(c, "Введите дату рождения в формате DD.MM.YYYY", chatMsg.ThreadID())

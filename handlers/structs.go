@@ -18,7 +18,7 @@ type ChatMessageHandler struct {
 	Rep             *database.PostgresRepository
 	Bot             *tele.Bot
 	ChatMessage     *ChatMessage
-	CurrentState    string
+	UserStates      map[int64]string // Состояния пользователей для личных переписок (userID -> state)
 }
 
 type ChatMessage struct {
@@ -364,4 +364,25 @@ func initPrivateMessage(c tele.Context, handler *ChatMessageHandler) (*ChatMessa
 	chatMsg.isWinner = isWinner
 
 	return chatMsg, nil
+}
+
+// GetUserState возвращает текущее состояние пользователя для личной переписки
+// Если состояние не установлено, возвращает "default"
+func (h *ChatMessageHandler) GetUserState(userID int64) string {
+	if h.UserStates == nil {
+		return "default"
+	}
+	state, exists := h.UserStates[userID]
+	if !exists {
+		return "default"
+	}
+	return state
+}
+
+// SetUserState устанавливает состояние пользователя для личной переписки
+func (h *ChatMessageHandler) SetUserState(userID int64, state string) {
+	if h.UserStates == nil {
+		h.UserStates = make(map[int64]string)
+	}
+	h.UserStates[userID] = state
 }

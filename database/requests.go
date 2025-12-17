@@ -500,3 +500,18 @@ func (p *PostgresRepository) UpdateUserBirthday(userID int64, birthday time.Time
 	user.Birthday = birthday
 	return p.SaveUser(&user)
 }
+
+func (p *PostgresRepository) GetUsersWithBirthdayToday() ([]User, error) {
+	var users []User
+	now := time.Now().In(MoscowTZ)
+	month := int(now.Month())
+	day := now.Day()
+
+	err := p.db.
+		Where("EXTRACT(MONTH FROM birthday) = ? AND EXTRACT(DAY FROM birthday) = ?", month, day).
+		Find(&users).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get users with birthday today: %v", err)
+	}
+	return users, nil
+}

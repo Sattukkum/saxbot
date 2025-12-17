@@ -383,3 +383,7 @@ func GetRandomClip() map[string]string {
 	result[key] = clipScreensDirs[key]
 	return result
 }
+
+func GetCongratulationsMessage() string {
+	return "🎂 Сегодня родились наши товарищи! Вся кладбищенская нежить присоединяется к поздравлениям!🥳\n\n"
+}
