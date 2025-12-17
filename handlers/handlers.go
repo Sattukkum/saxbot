@@ -73,10 +73,6 @@ func HandleChatMessage(c tele.Context, chatMessageHandler *ChatMessageHandler) e
 func HandlePrivateMessage(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
 	log.Printf("Received private message: '%s' from user %d", c.Message().Text, c.Message().Sender.ID)
 
-	// TODO: Реализовать логику обработки личных сообщений
-	// Например, можно добавить команды для работы с ботом в личке,
-	// обработку обращений пользователей, статистику и т.д.
-
 	chatMessage, err := initPrivateMessage(c, chatMessageHandler)
 	if err != nil {
 		log.Printf("Failed to initialize chat message: %v", err)

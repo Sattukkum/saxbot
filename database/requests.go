@@ -503,15 +503,49 @@ func (p *PostgresRepository) UpdateUserBirthday(userID int64, birthday time.Time
 
 func (p *PostgresRepository) GetUsersWithBirthdayToday() ([]User, error) {
 	var users []User
+
 	now := time.Now().In(MoscowTZ)
 	month := int(now.Month())
 	day := now.Day()
 
-	err := p.db.
-		Where("EXTRACT(MONTH FROM birthday) = ? AND EXTRACT(DAY FROM birthday) = ?", month, day).
-		Find(&users).Error
+	isLeapYear := func(y int) bool {
+		if y%400 == 0 {
+			return true
+		}
+		if y%100 == 0 {
+			return false
+		}
+		return y%4 == 0
+	}
+
+	query := p.db.
+		Where(
+			`
+			birthday IS NOT NULL
+			AND EXTRACT(YEAR FROM birthday) > 1900
+			AND (
+				(EXTRACT(MONTH FROM birthday) = ? AND EXTRACT(DAY FROM birthday) = ?)
+			)
+			`,
+			month, day,
+		)
+
+	// 29 февраля → поздравляем 28 февраля в невисокосный год
+	if month == 2 && day == 28 && !isLeapYear(now.Year()) {
+		query = query.Or(
+			`
+			birthday IS NOT NULL
+			AND EXTRACT(YEAR FROM birthday) > 1900
+			AND EXTRACT(MONTH FROM birthday) = 2
+			AND EXTRACT(DAY FROM birthday) = 29
+			`,
+		)
+	}
+
+	err := query.Find(&users).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to get users with birthday today: %v", err)
 	}
+
 	return users, nil
 }

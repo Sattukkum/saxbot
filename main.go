@@ -100,7 +100,7 @@ func main() {
 		QuizManager:     quizManager,
 		Rep:             rep,
 		Bot:             bot,
-		UserStates:      make(map[int64]string), // Инициализируем map для хранения состояний пользователей
+		UserStates:      make(map[int64]string),
 	}
 
 	// Обработка текстовых сообщений
