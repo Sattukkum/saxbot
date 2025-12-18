@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"saxbot/messages"
+	textcases "saxbot/text_cases"
 	"slices"
 	"strings"
 
@@ -120,12 +121,95 @@ func HandleUserJoined(c tele.Context, chatMessageHandler *ChatMessageHandler) er
 		}
 	}
 
+	// Сохраняем оригинальный статус до изменений
+	originalStatus := userData.Status
+
 	appeal := "@" + joinedUser.Username
 	if appeal == "@" {
 		appeal = joinedUser.FirstName
 	}
 
-	return messages.ReplyMessage(c, fmt.Sprintf(`Добро пожаловать, %s! Ты присоединился к чатику братства нежити. Напиши команду "Инфа", чтобы узнать, как тут все устроено`, appeal), c.Message().ThreadID)
+	// Проверяем, является ли пользователь новым (статус "active") или уже был замучен/рестриктнут/забанен ранее
+	isNewUser := originalStatus == "active"
+
+	if isNewUser {
+		// Мутим нового пользователя
+		userData.Status = "muted"
+		if err := chatMessageHandler.Rep.SaveUser(&userData); err != nil {
+			log.Printf("Failed to save muted status for joined user %d: %v", joinedUser.ID, err)
+		}
+
+		// Ограничиваем права пользователя в чате
+		chatMember := &tele.ChatMember{
+			User: joinedUser,
+			Role: tele.Member,
+			Rights: tele.Rights{
+				CanSendMessages: false,
+			},
+		}
+		if err := chatMessageHandler.Bot.Restrict(c.Message().Chat, chatMember); err != nil {
+			log.Printf("Failed to restrict user %d: %v", joinedUser.ID, err)
+		}
+
+		// Сохраняем State пользователя как нового пользователя
+		chatMessageHandler.SetUserState(joinedUser.ID, "new_user")
+
+		// Показываем кнопку для размута
+		menu := &tele.ReplyMarkup{ResizeKeyboard: true}
+		btnJoin := menu.Data("Я не бот!", "join")
+		menu.Inline(menu.Row(btnJoin))
+		opts := &tele.SendOptions{
+			ReplyMarkup: menu,
+			ThreadID:    c.Message().ThreadID,
+		}
+
+		return c.Reply(textcases.GetUserJoinedMessage(appeal), opts)
+	} else {
+		// Пользователь был замучен/рестриктнут/забанен ранее
+		// Применяем ограничения согласно текущему статусу
+		chatMember := &tele.ChatMember{
+			User: joinedUser,
+			Role: tele.Member,
+		}
+
+		switch originalStatus {
+		case "muted":
+			// Ограничиваем отправку сообщений
+			chatMember.Rights = tele.Rights{
+				CanSendMessages: false,
+			}
+		case "restricted":
+			// Ограничиваем отправку медиа
+			chatMember.Rights = tele.Rights{
+				CanSendMessages:  true,
+				CanSendMedia:     false,
+				CanSendAudios:    false,
+				CanSendVideos:    false,
+				CanSendPhotos:    false,
+				CanSendDocuments: false,
+				CanSendOther:     false,
+			}
+		case "banned":
+			// Бан - не применяем ограничения через Restrict, так как пользователь забанен
+			log.Printf("User %d is banned, skipping restrictions", joinedUser.ID)
+			return nil
+		default:
+			// Для других статусов применяем стандартные ограничения
+			chatMember.Rights = tele.Rights{
+				CanSendMessages: false,
+			}
+		}
+
+		if originalStatus != "banned" {
+			if err := chatMessageHandler.Bot.Restrict(c.Message().Chat, chatMember); err != nil {
+				log.Printf("Failed to restrict user %d with status %s: %v", joinedUser.ID, originalStatus, err)
+			}
+		}
+
+		// НЕ устанавливаем состояние "new_user" и НЕ показываем кнопку
+		log.Printf("User %d rejoined with status %s, not showing unmute button", joinedUser.ID, originalStatus)
+		return nil
+	}
 }
 
 // HandleCallback обрабатывает колбэки от инлайн-кнопок
@@ -138,6 +222,73 @@ func HandleCallback(c tele.Context, chatMessageHandler *ChatMessageHandler) erro
 	log.Printf("Received callback: '%s' from user %d", callback.Data, callback.Sender.ID)
 
 	callbackData := strings.TrimSpace(callback.Data)
+
+	// Обработка колбэка для подтверждения, что пользователь не бот
+	if callbackData == "join" {
+		userID := callback.Sender.ID
+
+		// Проверяем, что пользователь имеет состояние "new_user"
+		if chatMessageHandler.GetUserState(userID) != "new_user" {
+			return c.Respond(&tele.CallbackResponse{
+				Text:      "Эта кнопка не для тебя!",
+				ShowAlert: false,
+			})
+		}
+
+		// Получаем данные пользователя
+		userData, err := chatMessageHandler.Rep.GetUser(userID)
+		if err != nil {
+			log.Printf("Failed to get user data for unmute: %v", err)
+			return c.Respond(&tele.CallbackResponse{
+				Text:      "Ошибка при размуте. Обратитесь к админу.",
+				ShowAlert: true,
+			})
+		}
+
+		// Размучиваем пользователя
+		userData.Status = "active"
+		if err := chatMessageHandler.Rep.SaveUser(&userData); err != nil {
+			log.Printf("Failed to save active status for user %d: %v", userID, err)
+			return c.Respond(&tele.CallbackResponse{
+				Text:      "Ошибка при сохранении статуса. Обратитесь к админу.",
+				ShowAlert: true,
+			})
+		}
+
+		// Восстанавливаем права пользователя в чате
+		chatMember := &tele.ChatMember{
+			User: callback.Sender,
+			Role: tele.Member,
+			Rights: tele.Rights{
+				CanSendMessages:  true,
+				CanSendMedia:     true,
+				CanSendAudios:    true,
+				CanSendVideos:    true,
+				CanSendPhotos:    true,
+				CanSendDocuments: true,
+				CanSendOther:     true,
+			},
+		}
+		if err := chatMessageHandler.Bot.Restrict(c.Chat(), chatMember); err != nil {
+			log.Printf("Failed to unrestrict user %d: %v", userID, err)
+		}
+
+		// Удаляем состояние пользователя
+		if chatMessageHandler.UserStates != nil {
+			delete(chatMessageHandler.UserStates, userID)
+		}
+
+		// Удаляем кнопку из сообщения
+		if callback.Message != nil {
+			chatMessageHandler.Bot.EditReplyMarkup(callback.Message, nil)
+		}
+
+		return c.Respond(&tele.CallbackResponse{
+			Text:      "Добро пожаловать! Теперь ты можешь писать в чат.",
+			ShowAlert: false,
+		})
+	}
+
 	// Обработка колбэка для установки даты рождения
 	if callbackData == "set_birthday" {
 		userID := callback.Sender.ID
