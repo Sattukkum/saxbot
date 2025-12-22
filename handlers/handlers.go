@@ -224,7 +224,8 @@ func HandleCallback(c tele.Context, chatMessageHandler *ChatMessageHandler) erro
 	callbackData := strings.TrimSpace(callback.Data)
 
 	// Обработка колбэка для подтверждения, что пользователь не бот
-	if callbackData == "join" {
+	switch callbackData {
+	case "join":
 		userID := callback.Sender.ID
 
 		// Проверяем, что пользователь имеет состояние "new_user"
@@ -287,10 +288,8 @@ func HandleCallback(c tele.Context, chatMessageHandler *ChatMessageHandler) erro
 			Text:      "Добро пожаловать! Теперь ты можешь писать в чат.",
 			ShowAlert: false,
 		})
-	}
 
-	// Обработка колбэка для установки даты рождения
-	if callbackData == "set_birthday" {
+	case "set_birthday":
 		userID := callback.Sender.ID
 		chatMessageHandler.SetUserState(userID, "set_birthday")
 		return handleBirthdayCallback(c)
