@@ -3,10 +3,13 @@ package handlers
 import (
 	"fmt"
 	"log"
+	"saxbot/admins"
+	"saxbot/database"
 	"saxbot/messages"
 	textcases "saxbot/text_cases"
 	"slices"
 	"strings"
+	"time"
 
 	tele "gopkg.in/telebot.v4"
 )
@@ -130,13 +133,13 @@ func HandleUserJoined(c tele.Context, chatMessageHandler *ChatMessageHandler) er
 	}
 
 	// Проверяем, является ли пользователь новым (статус "active") или уже был замучен/рестриктнут/забанен ранее
-	isNewUser := originalStatus == "active"
+	isNewUser := (originalStatus == "active" || originalStatus == "new_user")
 
 	if isNewUser {
 		// Мутим нового пользователя
-		userData.Status = "muted"
+		userData.Status = "new_user"
 		if err := chatMessageHandler.Rep.SaveUser(&userData); err != nil {
-			log.Printf("Failed to save muted status for joined user %d: %v", joinedUser.ID, err)
+			log.Printf("Failed to save new_user status for joined user %d: %v", joinedUser.ID, err)
 		}
 
 		// Ограничиваем права пользователя в чате
@@ -163,6 +166,7 @@ func HandleUserJoined(c tele.Context, chatMessageHandler *ChatMessageHandler) er
 			ThreadID:    c.Message().ThreadID,
 		}
 
+		go autokick(chatMessageHandler.Bot, c.Message().Chat, chatMember, chatMessageHandler.Rep)
 		return c.Reply(textcases.GetUserJoinedMessage(appeal), opts)
 	} else {
 		// Пользователь был замучен/рестриктнут/забанен ранее
@@ -295,5 +299,20 @@ func HandleCallback(c tele.Context, chatMessageHandler *ChatMessageHandler) erro
 		return handleBirthdayCallback(c)
 	}
 
+	return nil
+}
+
+func autokick(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, db *database.PostgresRepository) error {
+	time.Sleep(5 * time.Minute)
+	userData, err := db.GetUser(user.User.ID)
+	if err != nil {
+		return fmt.Errorf("failed to get user %d: %v", user.User.ID, err)
+	}
+	if userData.Status == "new_user" {
+		err = admins.KickUser(bot, chat, user)
+		if err != nil {
+			return fmt.Errorf("failed to kick user %d: %v", userData.UserID, err)
+		}
+	}
 	return nil
 }

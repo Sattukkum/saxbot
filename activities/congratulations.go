@@ -24,7 +24,12 @@ func ManageCongratulations(bot *tele.Bot, quizChatID int64, rep *database.Postgr
 			log.Printf("failed to get users with birthday today: %v", err)
 			continue
 		}
-		message := textcases.GetCongratulationsMessage()
+		var message string
+		if len(users) == 1 {
+			message = textcases.GetCongratulationsMessage(true)
+		} else {
+			message = textcases.GetCongratulationsMessage(false)
+		}
 		if len(users) > 0 {
 			for _, user := range users {
 				if user.Username == "" {

@@ -21,6 +21,7 @@ func BanUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, db *database
 		}
 	}
 
+	existingData.Status = "banned"
 	db.SaveUser(&existingData)
 	bot.Ban(chat, user)
 }
@@ -211,6 +212,19 @@ func RestrictUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, db *dat
 	err = bot.Restrict(chat, user)
 	if err != nil {
 		return fmt.Errorf("failed to restrict user %d: %v", user.User.ID, err)
+	}
+	return nil
+}
+
+func KickUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember) error {
+	err := bot.Ban(chat, user)
+	if err != nil {
+		return fmt.Errorf("failed to temporary ban user %d: %v", user.User.ID, err)
+	}
+	time.Sleep(time.Second)
+	err = bot.Unban(chat, user.User)
+	if err != nil {
+		return fmt.Errorf("failed to unban kicked user %d: %v", user.User.ID, err)
 	}
 	return nil
 }
