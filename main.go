@@ -85,12 +85,15 @@ func main() {
 	}
 	go activities.ManageQuiz(rep, bot, quizManager)
 
+	// Даем секунду менеджеру квизов, чтоб определить при перезапуске бота, идет квиз или нет
+	time.Sleep(time.Second)
+
 	// Управление объявлениями
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	go activities.ManageAds(bot, quizChatID, r)
+	go activities.ManageAds(bot, quizChatID, r, quizManager)
 
 	// Управление поздравлениями
-	go activities.ManageCongratulations(bot, quizChatID, rep)
+	go activities.ManageCongratulations(bot, quizChatID, rep, quizManager)
 
 	// Инициализация обработчика сообщений чата
 	chatMessageHandler := handlers.ChatMessageHandler{

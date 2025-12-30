@@ -11,10 +11,16 @@ import (
 	tele "gopkg.in/telebot.v4"
 )
 
-func ManageCongratulations(bot *tele.Bot, quizChatID int64, rep *database.PostgresRepository) {
+func ManageCongratulations(bot *tele.Bot, quizChatID int64, rep *database.PostgresRepository, m *QuizManager) {
 	for {
 		now := time.Now().In(MoscowTZ)
 		todayTenAm := time.Date(now.Year(), now.Month(), now.Day(), 10, 0, 0, 0, MoscowTZ)
+
+		if m.QuizRunning {
+			time.Sleep(5 * time.Minute)
+			continue
+		}
+
 		if now.Before(todayTenAm) {
 			time.Sleep(1 * time.Hour)
 			continue

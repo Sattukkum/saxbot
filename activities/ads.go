@@ -9,7 +9,7 @@ import (
 	tele "gopkg.in/telebot.v4"
 )
 
-func ManageAds(bot *tele.Bot, quizChatID int64, r *rand.Rand) {
+func ManageAds(bot *tele.Bot, quizChatID int64, r *rand.Rand, m *QuizManager) {
 	moscowTZ := time.FixedZone("Moscow", 3*60*60)
 	var previousTheme int = 1
 	var currentTheme int
@@ -19,6 +19,10 @@ func ManageAds(bot *tele.Bot, quizChatID int64, r *rand.Rand) {
 		now := time.Now().In(moscowTZ)
 		from := time.Date(now.Year(), now.Month(), now.Day(), 10, 30, 0, 0, moscowTZ)
 		to := time.Date(now.Year(), now.Month(), now.Day(), 22, 30, 0, 0, moscowTZ)
+		if m.QuizRunning {
+			time.Sleep(10 * time.Minute)
+			continue
+		}
 		if now.After(from) && now.Before(to) {
 			imagePath, caption, currentTheme = textcases.GetAd(previousTheme, r)
 			log.Printf("imagePath: %s", imagePath)

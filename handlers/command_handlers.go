@@ -335,3 +335,11 @@ func handleBirthdayCallback(c tele.Context) error {
 	text := "Пожалуйста, введите дату рождения в формате DD.MM.YYYY (например, 15.03.1990)"
 	return c.Send(text)
 }
+
+func handleNotEnoughRights(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
+	chatMsg := chatMessageHandler.ChatMessage
+	if chatMsg == nil {
+		return fmt.Errorf("chat message is nil")
+	}
+	return messages.ReplyMessage(c, "У тебя недостаточно прав для выполнения этой команды.", chatMsg.threadID)
+}
