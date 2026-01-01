@@ -26,6 +26,22 @@ func BanUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, db *database
 	bot.Ban(chat, user)
 }
 
+// Разбанить юзера
+func UnbanUser(bot *tele.Bot, chat *tele.Chat, user *tele.User, db *database.PostgresRepository) {
+	existingData, err := db.GetUser(user.ID)
+	if err != nil {
+		existingData = database.User{
+			UserID:   user.ID,
+			Username: user.Username,
+			Warns:    0,
+			Status:   "active",
+		}
+	}
+	existingData.Status = "active"
+	db.SaveUser(&existingData)
+	bot.Unban(chat, user)
+}
+
 // Замутить юзера на x минут
 func MuteUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, db *database.PostgresRepository, x uint) {
 	existingData, err := db.GetUser(user.User.ID)

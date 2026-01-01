@@ -56,7 +56,7 @@ func handleAdminChatMessage(c tele.Context, chatMessageHandler *ChatMessageHandl
 			return handleNotEnoughRights(c, chatMessageHandler)
 		}
 	case "рестрикт", "кринж", "/restrict":
-		// Только сеньоры могут рестриктить
+		// Джуниоры и сеньоры могут рестриктить
 		if chatMsg.AdminRole() == "senior" || chatMsg.AdminRole() == "junior" {
 			return handleRestrict(c, chatMessageHandler)
 		} else {
@@ -81,6 +81,27 @@ func handleAdminChatMessage(c tele.Context, chatMessageHandler *ChatMessageHandl
 		// Только сеньоры могут использовать эту команду
 		if chatMsg.AdminRole() == "senior" {
 			return handleDecapitate(c, chatMessageHandler)
+		} else {
+			return handleNotEnoughRights(c, chatMessageHandler)
+		}
+	case "разбан", "помиловать":
+		// Только сеньоры могут использовать эту команду
+		if chatMsg.AdminRole() == "senior" {
+			return handleUnban(c, chatMessageHandler)
+		} else {
+			return handleNotEnoughRights(c, chatMessageHandler)
+		}
+	case "кикнуть", "уйди отсюда":
+		// Только сеньоры могут использовать эту команду
+		if chatMsg.AdminRole() == "senior" {
+			return handleKick(c, chatMessageHandler)
+		} else {
+			return handleNotEnoughRights(c, chatMessageHandler)
+		}
+	case "предупреждение всем", "всем предупреждение", "остановитесь!", "астанавитесь!":
+		// Джуниоры и сеньоры могут использовать эту команду
+		if chatMsg.AdminRole() == "senior" || chatMsg.AdminRole() == "junior" {
+			return handleWarnAll(c, chatMessageHandler)
 		} else {
 			return handleNotEnoughRights(c, chatMessageHandler)
 		}

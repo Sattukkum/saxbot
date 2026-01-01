@@ -95,6 +95,24 @@ func handleBan(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
 	return messages.ReplyMessage(c, fmt.Sprintf("%s идет нахуй из чатика", chatMsg.ReplyToAppeal()), chatMsg.ThreadID())
 }
 
+func handleUnban(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
+	chatMsg := chatMessageHandler.ChatMessage
+	if chatMsg == nil {
+		return fmt.Errorf("chat message is nil")
+	}
+	if !chatMsg.IsReply() {
+		return messages.ReplyMessage(c, "С кого бан снять?", chatMsg.ThreadID())
+	}
+	replyTo := chatMsg.ReplyTo()
+	if replyTo == nil || replyTo.Sender == nil {
+		return fmt.Errorf("reply message or sender is nil")
+	}
+
+	user := replyTo.Sender
+	admins.UnbanUser(chatMessageHandler.Bot, c.Message().Chat, user, chatMessageHandler.Rep)
+	return messages.ReplyMessage(c, fmt.Sprintf("%s помилован. Больше не шали!", chatMsg.replyToAppeal), chatMsg.ThreadID())
+}
+
 func handleRestrict(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
 	chatMsg := chatMessageHandler.ChatMessage
 	if chatMsg == nil {
@@ -342,4 +360,39 @@ func handleNotEnoughRights(c tele.Context, chatMessageHandler *ChatMessageHandle
 		return fmt.Errorf("chat message is nil")
 	}
 	return messages.ReplyMessage(c, "У тебя недостаточно прав для выполнения этой команды.", chatMsg.threadID)
+}
+
+func handleKick(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
+	chatMsg := chatMessageHandler.ChatMessage
+	if chatMsg == nil {
+		return fmt.Errorf("chat message is nil")
+	}
+	if !chatMsg.IsReply() {
+		return messages.ReplyMessage(c, "Кого мне кикать?", chatMsg.ThreadID())
+	}
+
+	if chatMsg.ReplyToAdmin() {
+		return messages.ReplyMessage(c, "Ты не можешь кикать других админов, соси писос", chatMsg.ThreadID())
+	}
+
+	replyTo := chatMsg.ReplyTo()
+	if replyTo == nil || replyTo.Sender == nil {
+		return fmt.Errorf("reply message or sender is nil")
+	}
+
+	user := replyTo.Sender
+	chatMember := &tele.ChatMember{User: user, Role: tele.Member}
+	err := admins.KickUser(chatMessageHandler.Bot, chatMsg.chat, chatMember)
+	if err != nil {
+		return fmt.Errorf("can't kick user %d: %v", user.ID, err)
+	}
+	return messages.ReplyMessage(c, fmt.Sprintf("%s покидает нас", chatMsg.replyToAppeal), chatMsg.ThreadID())
+}
+
+func handleWarnAll(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
+	chatMsg := chatMessageHandler.ChatMessage
+	if chatMsg == nil {
+		return fmt.Errorf("chat message is nil")
+	}
+	return messages.ReplyFormattedHTML(c, "Неужели мало сегодняшних жертв? Надо, чтобы в чатике продолжали сраться и страдать тысячи людей? <b>Астанавитесь!</b> Всем предупреждение!", chatMsg.ThreadID())
 }

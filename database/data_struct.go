@@ -41,7 +41,7 @@ type Quiz struct {
 type Admin struct {
 	ID        int64  `gorm:"primaryKey" json:"id"`
 	User      User   `gorm:"foreignKey:ID;references:UserID" json:"admin,omitempty"`
-	AdminRole string `gorm:"size:500,default:'junior'" json:"admin_role"` // Два уровня - junior и senior. Джунам нельзя банить через бота
+	AdminRole string `gorm:"size:500,default:'junior'" json:"admin_role"` // Два уровня - junior и senior. Отличаются возможностью банить
 }
 
 func (User) TableName() string {
