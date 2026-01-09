@@ -14,7 +14,20 @@ type User struct {
 	Warns        int            `gorm:"default:0" json:"warns"`
 	Status       string         `gorm:"size:50;default:'active'" json:"status"`
 	MessageCount int            `gorm:"default:0" json:"message_count"`
+	MutedUntil   time.Time      `gorm:"default:null" json:"muted_until"`
 	Birthday     time.Time      `gorm:"default:null" json:"birthday"`
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+	DeletedAt    gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+}
+
+// Channel представляет каналы в Postgres
+type Channel struct {
+	SenderChatID int64          `gorm:"PrimaryKey" json:"sender_chat_id"`
+	Title        string         `gorm:"size:255" json:"title"`
+	Warns        int            `gorm:"default:0" json:"warns"`
+	Status       string         `gorm:"size:50;default:'active'" json:"status"`
+	MutedUntil   time.Time      `gorm:"default:null" json:"muted_until"`
 	CreatedAt    time.Time      `json:"created_at"`
 	UpdatedAt    time.Time      `json:"updated_at"`
 	DeletedAt    gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
@@ -46,6 +59,10 @@ type Admin struct {
 
 func (User) TableName() string {
 	return "users"
+}
+
+func (Channel) TableName() string {
+	return "channels"
 }
 
 func (Quiz) TableName() string {

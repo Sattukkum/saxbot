@@ -6,9 +6,7 @@ import (
 	"math/rand"
 	"saxbot/admins"
 	"saxbot/database"
-	"saxbot/messages"
 	textcases "saxbot/text_cases"
-	"strings"
 	"sync"
 	"time"
 
@@ -284,35 +282,5 @@ func ManageQuiz(rep *database.PostgresRepository, bot *tele.Bot, quizManager *Qu
 		winner, _ := rep.GetQuizWinnerID()
 		quizManager.SetWinnerID(winner)
 		time.Sleep(1 * time.Minute)
-	}
-}
-
-func ManageRunningQuiz(rep *database.PostgresRepository, bot *tele.Bot, quizManager *QuizManager, c tele.Context, appeal string) {
-	_, quizRunning, _, _, _, _ := quizManager.GetState()
-	log.Printf("Quiz running: %v", quizRunning)
-	log.Print(c.Message().Text)
-	todayQuiz, _, _, _, _, _ := quizManager.GetState()
-	log.Print(todayQuiz.SongName)
-	if strings.EqualFold(c.Message().Text, todayQuiz.SongName) {
-		quizManager.SetQuizRunning(false)
-		quizManager.SetQuizAlreadyWas(true)
-		rep.SetQuizAlreadyWas()
-		winnerTitle := textcases.GetRandomTitle()
-		messages.ReplyMessage(c, fmt.Sprintf("Правильно! Песня: %s", todayQuiz.SongName), c.Message().ThreadID)
-		time.Sleep(100 * time.Millisecond)
-		messages.ReplyMessage(c, fmt.Sprintf("Поздравляем, %s! Ты победил и получил титул %s до следующего квиза!", appeal, winnerTitle), c.Message().ThreadID)
-		chatMember := &tele.ChatMember{User: c.Message().Sender, Role: tele.Member}
-		admins.SetPref(bot, c.Chat(), chatMember, winnerTitle)
-		quiz, err := rep.GetLastCompletedQuiz()
-		if err != nil {
-			log.Printf("failed to get last completed quiz: %v", err)
-		} else if quiz != nil {
-			err = rep.SetQuizWinner(quiz.ID, c.Message().Sender.ID)
-			if err != nil {
-				log.Printf("failed to set user %d as a quiz winner %v", c.Message().Sender.ID, err)
-			}
-		}
-		// Обновляем isLastQuizClip после завершения квиза для правильного чередования
-		quizManager.SetIsLastQuizClip(todayQuiz.IsClip)
 	}
 }

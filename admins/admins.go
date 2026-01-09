@@ -60,32 +60,48 @@ func MuteUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, db *databas
 	user.Rights = tele.Rights{CanSendMessages: false}
 	bot.Restrict(chat, user)
 
-	go func(userID int64) {
-		time.Sleep(time.Duration(x) * time.Minute)
+	err = db.SaveUserMutedUntil(existingData.UserID, x)
+	if err != nil {
+		log.Printf("failed to save muted until time for user %d: %v\ngoing old way with goroutine", existingData.UserID, err)
 
-		userData, err := db.GetUser(userID)
-		if userData.Status != "muted" {
-			return
-		}
-		if err == nil {
+		// Сохраняем копии переменных для использования в горутине
+		userID := user.User.ID
+		userCopy := user.User
+
+		go func() {
+			time.Sleep(time.Duration(x) * time.Minute)
+
+			userData, err := db.GetUser(userID)
+			if err != nil {
+				log.Printf("failed to get user %d in unmute goroutine: %v", userID, err)
+				return
+			}
+			if userData.Status != "muted" {
+				return
+			}
+
 			userData.Status = "active"
-			db.SaveUser(&userData)
-		}
+			if err := db.SaveUser(&userData); err != nil {
+				log.Printf("failed to save active status for user %d in unmute goroutine: %v", userID, err)
+			}
 
-		unmuteUser := &tele.ChatMember{
-			User: user.User,
-			Rights: tele.Rights{
-				CanSendMessages:  true,
-				CanSendMedia:     true,
-				CanSendAudios:    true,
-				CanSendVideos:    true,
-				CanSendPhotos:    true,
-				CanSendDocuments: true,
-				CanSendOther:     true,
-			},
-		}
-		bot.Restrict(chat, unmuteUser)
-	}(user.User.ID)
+			unmuteUser := &tele.ChatMember{
+				User: userCopy,
+				Rights: tele.Rights{
+					CanSendMessages:  true,
+					CanSendMedia:     true,
+					CanSendAudios:    true,
+					CanSendVideos:    true,
+					CanSendPhotos:    true,
+					CanSendDocuments: true,
+					CanSendOther:     true,
+				},
+			}
+			if err := bot.Restrict(chat, unmuteUser); err != nil {
+				log.Printf("failed to unrestrict user %d in unmute goroutine: %v", userID, err)
+			}
+		}()
+	}
 }
 
 // Размутить юзера досрочно
@@ -166,13 +182,13 @@ func SetPref(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, pref string)
 func RemovePref(bot *tele.Bot, chat *tele.Chat, db *database.PostgresRepository) error {
 	lastQuiz, err := db.GetLastCompletedQuiz()
 	if err != nil {
-		return fmt.Errorf("failed to get last quiz: %v", err)
+		return fmt.Errorf("failed to get last quiz: %w", err)
 	}
 	winnerID := lastQuiz.WinnerID
 	user := &tele.User{ID: winnerID}
 	member, err := bot.ChatMemberOf(chat, user)
 	if err != nil {
-		return fmt.Errorf("failed to get chat member from user %d: %v", winnerID, err)
+		return fmt.Errorf("failed to get chat member from user %d: %w", winnerID, err)
 	}
 	if member.Role != tele.Administrator {
 		log.Printf("RemovePref: User %d is not admin already", winnerID)
@@ -189,7 +205,7 @@ func RemovePref(bot *tele.Bot, chat *tele.Chat, db *database.PostgresRepository)
 	}
 	err = bot.Restrict(chat, member)
 	if err != nil {
-		return fmt.Errorf("failed to temporary restrict user %d: %v", winnerID, err)
+		return fmt.Errorf("failed to temporary restrict user %d: %w", winnerID, err)
 	}
 	time.Sleep(500 * time.Millisecond)
 	member.Rights = tele.Rights{
@@ -203,7 +219,7 @@ func RemovePref(bot *tele.Bot, chat *tele.Chat, db *database.PostgresRepository)
 	}
 	err = bot.Restrict(chat, member)
 	if err != nil {
-		return fmt.Errorf("failed to unrestrict user %d: %v", winnerID, err)
+		return fmt.Errorf("failed to unrestrict user %d: %w", winnerID, err)
 	}
 	return nil
 }
@@ -212,7 +228,7 @@ func RemovePref(bot *tele.Bot, chat *tele.Chat, db *database.PostgresRepository)
 func RestrictUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, db *database.PostgresRepository) error {
 	userData, err := db.GetUser(user.User.ID)
 	if err != nil {
-		return fmt.Errorf("failed to get user %d: %v", user.User.ID, err)
+		return fmt.Errorf("failed to get user %d: %w", user.User.ID, err)
 	}
 	userData.Status = "restricted"
 	db.SaveUser(&userData)
@@ -227,20 +243,48 @@ func RestrictUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, db *dat
 	}
 	err = bot.Restrict(chat, user)
 	if err != nil {
-		return fmt.Errorf("failed to restrict user %d: %v", user.User.ID, err)
+		return fmt.Errorf("failed to restrict user %d: %w", user.User.ID, err)
 	}
 	return nil
 }
 
+// Кикнуть юзера без бана
 func KickUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember) error {
 	err := bot.Ban(chat, user)
 	if err != nil {
-		return fmt.Errorf("failed to temporary ban user %d: %v", user.User.ID, err)
+		return fmt.Errorf("failed to temporary ban user %d: %w", user.User.ID, err)
 	}
 	time.Sleep(time.Second)
 	err = bot.Unban(chat, user.User)
 	if err != nil {
-		return fmt.Errorf("failed to unban kicked user %d: %v", user.User.ID, err)
+		return fmt.Errorf("failed to unban kicked user %d: %w", user.User.ID, err)
 	}
 	return nil
+}
+
+// Размутить юзеров по таймеру
+func UnmuteUsersByTime(bot *tele.Bot, chat *tele.Chat, db *database.PostgresRepository) {
+	users, err := db.GetAllMutedToUnmute()
+	if err != nil {
+		log.Printf("failed to get users to unmute: %v", err)
+	}
+	channels, err := db.GetAllMutedChannelsToUnmute()
+	if err != nil {
+		log.Printf("failed to get channels to unmute: %v", err)
+	}
+	if len(users) == 0 && len(channels) == 0 {
+		log.Println("got no users to unmute")
+	}
+	for _, user := range users {
+		chatMember, err := bot.ChatMemberOf(chat, &tele.User{ID: user.UserID})
+		if err != nil {
+			log.Printf("failed to get chat member of user %d: %v", user.UserID, err)
+			continue
+		}
+		UnmuteUser(bot, chat, chatMember, db)
+	}
+	for _, channel := range channels {
+		channel.Status = "active"
+		db.SaveChannel(&channel)
+	}
 }

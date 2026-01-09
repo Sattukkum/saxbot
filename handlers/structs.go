@@ -22,21 +22,26 @@ type ChatMessageHandler struct {
 }
 
 type ChatMessage struct {
-	isReply         bool
-	replyTo         *tele.Message
-	sender          *tele.User
-	text            string
-	chat            *tele.Chat
-	threadID        int
-	chatAdmin       bool
-	replyToAdmin    bool
-	replyToAppeal   string
-	isWinner        bool
-	userData        *database.User
-	replyToUserData *database.User
-	adminRole       string
-	appeal          string
-	replyToID       int64
+	isReply          bool
+	replyTo          *tele.Message
+	sender           *tele.User
+	text             string
+	chat             *tele.Chat
+	channel          *tele.Chat
+	threadID         int
+	chatAdmin        bool
+	replyToAdmin     bool
+	replyToAppeal    string
+	isWinner         bool
+	userData         *database.User
+	channelData      *database.Channel
+	replyToUserData  *database.User
+	replyToChannel   *tele.Chat // Канал, на сообщение которого отвечают
+	adminRole        string
+	appeal           string
+	replyToID        int64
+	isFromChannel    bool // Флаг, указывающий, что сообщение от канала
+	replyToIsChannel bool // Флаг, указывающий, что ReplyTo - это канал
 }
 
 // Геттеры для доступа к полям ChatMessage
@@ -145,6 +150,41 @@ func (cm *ChatMessage) ReplyToID() int64 {
 	return cm.replyToID
 }
 
+func (cm *ChatMessage) ChannelData() *database.Channel {
+	if cm == nil {
+		return nil
+	}
+	return cm.channelData
+}
+
+func (cm *ChatMessage) IsFromChannel() bool {
+	if cm == nil {
+		return false
+	}
+	return cm.isFromChannel
+}
+
+func (cm *ChatMessage) Channel() *tele.Chat {
+	if cm == nil {
+		return nil
+	}
+	return cm.channel
+}
+
+func (cm *ChatMessage) ReplyToIsChannel() bool {
+	if cm == nil {
+		return false
+	}
+	return cm.replyToIsChannel
+}
+
+func (cm *ChatMessage) ReplyToChannel() *tele.Chat {
+	if cm == nil {
+		return nil
+	}
+	return cm.replyToChannel
+}
+
 func initChatMessage(c tele.Context, handler *ChatMessageHandler) (*ChatMessage, error) {
 	// Валидация входных данных
 	if c == nil {
@@ -183,6 +223,7 @@ func initChatMessage(c tele.Context, handler *ChatMessageHandler) (*ChatMessage,
 	// Определяем, является ли отправитель каналом-админом
 	var chatAdmin bool
 	if msg.SenderChat != nil {
+		chatMsg.channel = msg.SenderChat
 		chatID := msg.SenderChat.ID
 		if slices.Contains(handler.AdminsList, chatID) {
 			chatAdmin = true
@@ -191,99 +232,160 @@ func initChatMessage(c tele.Context, handler *ChatMessageHandler) (*ChatMessage,
 	chatMsg.chatAdmin = chatAdmin
 
 	// Формируем обращение к отправителю
-	appeal := "@" + msg.Sender.Username
-	if appeal == "@" {
-		if msg.Sender.FirstName == "" {
-			appeal = fmt.Sprintf("User %d", msg.Sender.ID)
-		} else {
-			appeal = msg.Sender.FirstName
+	var appeal string
+	if chatMsg.channel == nil {
+		appeal = "@" + msg.Sender.Username
+		if appeal == "@" {
+			if msg.Sender.FirstName == "" {
+				appeal = fmt.Sprintf("User %d", msg.Sender.ID)
+			} else {
+				appeal = msg.Sender.FirstName
+			}
+		}
+	} else {
+		appeal = chatMsg.channel.Title
+		if appeal == "" {
+			appeal = "Анонимный канал"
 		}
 	}
 	chatMsg.appeal = appeal
 
-	// Получаем данные пользователя из БД
-	userID := msg.Sender.ID
-	if userID == 0 {
-		return nil, fmt.Errorf("invalid user ID: %d", userID)
-	}
+	// Определяем, является ли сообщение от канала
+	isFromChannel := msg.SenderChat != nil
+	chatMsg.isFromChannel = isFromChannel
 
-	userData, err := handler.Rep.GetUser(userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get user data for user %d: %w", userID, err)
-	}
-
-	// Обновляем username и firstname, если изменились
-	if userData.Username != msg.Sender.Username || userData.FirstName != msg.Sender.FirstName {
-		userData.Username = msg.Sender.Username
-		userData.FirstName = msg.Sender.FirstName
-		if err := handler.Rep.SaveUser(&userData); err != nil {
-			log.Printf("Failed to save persistent username update for user %d: %v", userID, err)
-			// Не возвращаем ошибку, так как это не критично
+	if isFromChannel {
+		// Обработка сообщения от канала
+		senderChatID := chatMsg.channel.ID
+		channelData, err := handler.Rep.GetChannel(senderChatID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get channel data for channel %d: %w", senderChatID, err)
 		}
+		if channelData.Title != chatMsg.channel.Title {
+			channelData.Title = chatMsg.channel.Title
+			if err := handler.Rep.SaveChannel(&channelData); err != nil {
+				log.Printf("Failed to save persistent title update for channel %d: %v", senderChatID, err)
+				// Не возвращаем ошибку, так как это не критично
+			}
+		}
+		chatMsg.channelData = &channelData
+	} else {
+		// Обработка сообщения от пользователя
+		userID := msg.Sender.ID
+		if userID == 0 {
+			return nil, fmt.Errorf("invalid user ID: %d", userID)
+		}
+
+		userData, err := handler.Rep.GetUser(userID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get user data for user %d: %w", userID, err)
+		}
+
+		// Обновляем username и firstname, если изменились
+		if userData.Username != msg.Sender.Username || userData.FirstName != msg.Sender.FirstName {
+			userData.Username = msg.Sender.Username
+			userData.FirstName = msg.Sender.FirstName
+			if err := handler.Rep.SaveUser(&userData); err != nil {
+				log.Printf("Failed to save persistent username update for user %d: %v", userID, err)
+				// Не возвращаем ошибку, так как это не критично
+			}
+		}
+		chatMsg.userData = &userData
 	}
-	chatMsg.userData = &userData
 
 	// Обработка ответа на сообщение
 	if chatMsg.isReply {
 		if msg.ReplyTo == nil {
 			return nil, fmt.Errorf("reply flag is set but ReplyTo is nil")
 		}
-		if msg.ReplyTo.Sender == nil {
-			return nil, fmt.Errorf("reply message sender is nil")
-		}
 
-		replyToID := msg.ReplyTo.Sender.ID
-		if replyToID == 0 {
-			return nil, fmt.Errorf("invalid reply to user ID: %d", replyToID)
-		}
-		chatMsg.replyToID = replyToID
+		// Проверяем, является ли ReplyTo сообщением от канала
+		if msg.ReplyTo.SenderChat != nil {
+			// ReplyTo - это канал
+			chatMsg.replyToIsChannel = true
+			chatMsg.replyToChannel = msg.ReplyTo.SenderChat
+			replyToChannelID := msg.ReplyTo.SenderChat.ID
+			chatMsg.replyToID = replyToChannelID
 
-		replyToAppeal := "@" + msg.ReplyTo.Sender.Username
-		if replyToAppeal == "@" {
-			if msg.ReplyTo.Sender.FirstName == "" {
-				replyToAppeal = fmt.Sprintf("User %d", replyToID)
-			} else {
-				replyToAppeal = msg.ReplyTo.Sender.FirstName
+			replyToAppeal := msg.ReplyTo.SenderChat.Title
+			if replyToAppeal == "" {
+				replyToAppeal = "Анонимный канал"
 			}
-		}
-		chatMsg.replyToAppeal = replyToAppeal
+			chatMsg.replyToAppeal = replyToAppeal
 
-		replyToUser, err := handler.Rep.GetUser(replyToID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get reply to user data for user %d: %w", replyToID, err)
-		}
-
-		if replyToUser.Username != msg.ReplyTo.Sender.Username {
-			replyToUser.Username = msg.ReplyTo.Sender.Username
-			if err := handler.Rep.SaveUser(&replyToUser); err != nil {
-				log.Printf("Failed to save persistent username update for reply user %d: %v", replyToID, err)
-				// Не возвращаем ошибку, так как это не критично
+			// Проверяем, является ли канал админом
+			replyToAdmin := slices.Contains(handler.AdminsList, replyToChannelID)
+			chatMsg.replyToAdmin = replyToAdmin
+		} else {
+			// ReplyTo - это пользователь
+			chatMsg.replyToIsChannel = false
+			// ReplyTo - это пользователь
+			if msg.ReplyTo.Sender == nil {
+				return nil, fmt.Errorf("reply message sender is nil")
 			}
-		}
-		chatMsg.replyToUserData = &replyToUser
 
-		replyToAdmin := handler.Rep.IsAdmin(replyToID)
-		chatMsg.replyToAdmin = replyToAdmin
+			replyToID := msg.ReplyTo.Sender.ID
+			if replyToID == 0 {
+				return nil, fmt.Errorf("invalid reply to user ID: %d", replyToID)
+			}
+			chatMsg.replyToID = replyToID
+
+			replyToAppeal := "@" + msg.ReplyTo.Sender.Username
+			if replyToAppeal == "@" {
+				if msg.ReplyTo.Sender.FirstName == "" {
+					replyToAppeal = fmt.Sprintf("User %d", replyToID)
+				} else {
+					replyToAppeal = msg.ReplyTo.Sender.FirstName
+				}
+			}
+			chatMsg.replyToAppeal = replyToAppeal
+
+			replyToUser, err := handler.Rep.GetUser(replyToID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get reply to user data for user %d: %w", replyToID, err)
+			}
+
+			if replyToUser.Username != msg.ReplyTo.Sender.Username {
+				replyToUser.Username = msg.ReplyTo.Sender.Username
+				if err := handler.Rep.SaveUser(&replyToUser); err != nil {
+					log.Printf("Failed to save persistent username update for reply user %d: %v", replyToID, err)
+					// Не возвращаем ошибку, так как это не критично
+				}
+			}
+			chatMsg.replyToUserData = &replyToUser
+
+			replyToAdmin := handler.Rep.IsAdmin(replyToID)
+			chatMsg.replyToAdmin = replyToAdmin
+		}
 	}
 
 	// Определяем роль админа
 	var adminRole = ""
-	isAdmin := handler.Rep.IsAdmin(userData.UserID)
-	if isAdmin {
-		adminRole, err = handler.Rep.GetAdminRole(userData.UserID)
-		if err != nil {
-			log.Printf("failed to get admin role for user %d, consider it junior: %v", userData.UserID, err)
-			adminRole = "junior"
+	if isFromChannel {
+		// Каналы-админы всегда имеют роль senior
+		if chatAdmin {
+			adminRole = "senior"
 		}
-	}
-	if chatAdmin {
-		adminRole = "senior"
+	} else {
+		// Для пользователей проверяем админский статус
+		userID := chatMsg.userData.UserID
+		isAdmin := handler.Rep.IsAdmin(userID)
+		if isAdmin {
+			var err error
+			adminRole, err = handler.Rep.GetAdminRole(userID)
+			if err != nil {
+				log.Printf("failed to get admin role for user %d, consider it junior: %v", userID, err)
+				adminRole = "junior"
+			}
+		}
 	}
 	chatMsg.adminRole = adminRole
 
-	// Проверяем, является ли пользователь победителем квиза
-	isWinner := userData.UserID == handler.QuizManager.Winner()
-	chatMsg.isWinner = isWinner
+	// Проверяем, является ли пользователь победителем квиза (только для пользователей, не для каналов)
+	if !isFromChannel {
+		isWinner := chatMsg.userData.UserID == handler.QuizManager.Winner()
+		chatMsg.isWinner = isWinner
+	}
 
 	return chatMsg, nil
 }

@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"fmt"
-	"saxbot/activities"
 	"saxbot/messages"
 	"strings"
 
@@ -28,7 +27,7 @@ func handleUserChatMessage(c tele.Context, chatMessageHandler *ChatMessageHandle
 
 	// Если квиз запущен, обрабатываем ответы на квиз
 	if chatMessageHandler.QuizManager.IsRunning() {
-		activities.ManageRunningQuiz(chatMessageHandler.Rep, chatMessageHandler.Bot, chatMessageHandler.QuizManager, c, chatMsg.Appeal())
+		ManageRunningQuiz(c, chatMessageHandler)
 	}
 
 	return nil

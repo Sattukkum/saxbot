@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"saxbot/admins"
+	"saxbot/database"
 	"saxbot/messages"
 	textcases "saxbot/text_cases"
 	"strings"
@@ -37,12 +38,22 @@ func handleWarn(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
 	}
 
 	replyToID := chatMsg.ReplyToID()
-	if err := chatMessageHandler.Rep.UpdateUserWarns(replyToID, 1); err != nil {
-		log.Printf("Failed to save warns increase for user %d: %v", replyToID, err)
+
+	// Проверяем, является ли ReplyTo каналом
+	if chatMsg.ReplyToIsChannel() {
+		// Для каналов используем UpdateChannelWarns
+		if err := chatMessageHandler.Rep.UpdateChannelWarns(replyToID, 1); err != nil {
+			log.Printf("Failed to save warns increase for channel %d: %v", replyToID, err)
+		}
 	} else {
-		replyToUserData := chatMsg.ReplyToUserData()
-		if replyToUserData != nil {
-			replyToUserData.Warns++
+		// Для пользователей используем UpdateUserWarns
+		if err := chatMessageHandler.Rep.UpdateUserWarns(replyToID, 1); err != nil {
+			log.Printf("Failed to save warns increase for user %d: %v", replyToID, err)
+		} else {
+			replyToUserData := chatMsg.ReplyToUserData()
+			if replyToUserData != nil {
+				replyToUserData.Warns++
+			}
 		}
 	}
 
@@ -83,6 +94,23 @@ func handleBan(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
 		return messages.ReplyMessage(c, "Ты не можешь банить других админов, соси писос", chatMsg.ThreadID())
 	}
 
+	// Проверяем, является ли ReplyTo каналом
+	if chatMsg.ReplyToIsChannel() {
+		// Для каналов только меняем статус в БД
+		channelID := chatMsg.ReplyToChannel().ID
+		channelData, err := chatMessageHandler.Rep.GetChannel(channelID)
+		if err != nil {
+			return fmt.Errorf("failed to get channel data for channel %d: %w", channelID, err)
+		}
+		channelData.Status = "banned"
+		if err := chatMessageHandler.Rep.SaveChannel(&channelData); err != nil {
+			return fmt.Errorf("failed to ban channel %d: %w", channelID, err)
+		}
+		chatMessageHandler.Bot.Delete(chatMsg.ReplyTo())
+		return messages.ReplyMessage(c, fmt.Sprintf("%s идет нахуй из чатика", chatMsg.ReplyToAppeal()), chatMsg.ThreadID())
+	}
+
+	// Обработка бана пользователя
 	replyTo := chatMsg.ReplyTo()
 	if replyTo == nil || replyTo.Sender == nil {
 		return fmt.Errorf("reply message or sender is nil")
@@ -103,6 +131,23 @@ func handleUnban(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
 	if !chatMsg.IsReply() {
 		return messages.ReplyMessage(c, "С кого бан снять?", chatMsg.ThreadID())
 	}
+
+	// Проверяем, является ли ReplyTo каналом
+	if chatMsg.ReplyToIsChannel() {
+		// Для каналов только меняем статус в БД
+		channelID := chatMsg.ReplyToChannel().ID
+		channelData, err := chatMessageHandler.Rep.GetChannel(channelID)
+		if err != nil {
+			return fmt.Errorf("failed to get channel data for channel %d: %w", channelID, err)
+		}
+		channelData.Status = "active"
+		if err := chatMessageHandler.Rep.SaveChannel(&channelData); err != nil {
+			return fmt.Errorf("failed to unban channel %d: %w", channelID, err)
+		}
+		return messages.ReplyMessage(c, fmt.Sprintf("%s помилован. Больше не шали!", chatMsg.ReplyToAppeal()), chatMsg.ThreadID())
+	}
+
+	// Обработка разбана пользователя
 	replyTo := chatMsg.ReplyTo()
 	if replyTo == nil || replyTo.Sender == nil {
 		return fmt.Errorf("reply message or sender is nil")
@@ -110,7 +155,7 @@ func handleUnban(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
 
 	user := replyTo.Sender
 	admins.UnbanUser(chatMessageHandler.Bot, c.Message().Chat, user, chatMessageHandler.Rep)
-	return messages.ReplyMessage(c, fmt.Sprintf("%s помилован. Больше не шали!", chatMsg.replyToAppeal), chatMsg.ThreadID())
+	return messages.ReplyMessage(c, fmt.Sprintf("%s помилован. Больше не шали!", chatMsg.ReplyToAppeal()), chatMsg.ThreadID())
 }
 
 func handleRestrict(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
@@ -126,6 +171,22 @@ func handleRestrict(c tele.Context, chatMessageHandler *ChatMessageHandler) erro
 		return messages.ReplyMessage(c, "Ты не можешь рестриктить других админов, соси писос", chatMsg.ThreadID())
 	}
 
+	// Проверяем, является ли ReplyTo каналом
+	if chatMsg.ReplyToIsChannel() {
+		// Для каналов только меняем статус в БД
+		channelID := chatMsg.ReplyToChannel().ID
+		channelData, err := chatMessageHandler.Rep.GetChannel(channelID)
+		if err != nil {
+			return fmt.Errorf("failed to get channel data for channel %d: %w", channelID, err)
+		}
+		channelData.Status = "restricted"
+		if err := chatMessageHandler.Rep.SaveChannel(&channelData); err != nil {
+			return fmt.Errorf("failed to restrict channel %d: %w", channelID, err)
+		}
+		return messages.ReplyMessage(c, fmt.Sprintf("%s рестрикнут. Даже я словил кринж. А я бот ваще-то", chatMsg.ReplyToAppeal()), chatMsg.ThreadID())
+	}
+
+	// Обработка рестрикта пользователя
 	replyTo := chatMsg.ReplyTo()
 	if replyTo == nil || replyTo.Sender == nil {
 		return fmt.Errorf("reply message or sender is nil")
@@ -149,6 +210,22 @@ func handleUnmute(c tele.Context, chatMessageHandler *ChatMessageHandler) error 
 		return messages.ReplyMessage(c, "Кого размутить?", chatMsg.ThreadID())
 	}
 
+	// Проверяем, является ли ReplyTo каналом
+	if chatMsg.ReplyToIsChannel() {
+		// Для каналов только меняем статус в БД
+		channelID := chatMsg.ReplyToChannel().ID
+		channelData, err := chatMessageHandler.Rep.GetChannel(channelID)
+		if err != nil {
+			return fmt.Errorf("failed to get channel data for channel %d: %w", channelID, err)
+		}
+		channelData.Status = "active"
+		if err := chatMessageHandler.Rep.SaveChannel(&channelData); err != nil {
+			return fmt.Errorf("failed to unmute channel %d: %w", channelID, err)
+		}
+		return messages.ReplyMessage(c, fmt.Sprintf("%s размучен. А то че как воды в рот набрал", chatMsg.ReplyToAppeal()), chatMsg.ThreadID())
+	}
+
+	// Обработка размута пользователя
 	replyTo := chatMsg.ReplyTo()
 	if replyTo == nil || replyTo.Sender == nil {
 		return fmt.Errorf("reply message or sender is nil")
@@ -178,6 +255,25 @@ func handleMute(c tele.Context, chatMessageHandler *ChatMessageHandler, duration
 		return messages.ReplyMessage(c, "Ты не можешь мутить других админов, соси писос", chatMsg.ThreadID())
 	}
 
+	// Проверяем, является ли ReplyTo каналом
+	if chatMsg.ReplyToIsChannel() {
+		// Для каналов только меняем статус в БД и запускаем горутину для автоматического размута
+		channelID := chatMsg.ReplyToChannel().ID
+		channelData, err := chatMessageHandler.Rep.GetChannel(channelID)
+		if err != nil {
+			return fmt.Errorf("failed to get channel data for channel %d: %w", channelID, err)
+		}
+		now := time.Now().In(database.MoscowTZ)
+		channelData.Status = "muted"
+		channelData.MutedUntil = now.Add(time.Duration(durationMinutes) * time.Minute)
+		if err := chatMessageHandler.Rep.SaveChannel(&channelData); err != nil {
+			return fmt.Errorf("failed to mute channel %d: %w", channelID, err)
+		}
+
+		return messages.ReplyMessage(c, fmt.Sprintf("%s помолчит %d минут и подумает о своем поведении", chatMsg.ReplyToAppeal(), durationMinutes), chatMsg.ThreadID())
+	}
+
+	// Обработка мута пользователя
 	replyTo := chatMsg.ReplyTo()
 	if replyTo == nil || replyTo.Sender == nil {
 		return fmt.Errorf("reply message or sender is nil")
@@ -209,6 +305,25 @@ func handleNazik(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
 		return messages.ReplyMessage(c, "Ты не можешь банить других админов, соси писос", chatMsg.ThreadID())
 	}
 
+	// Проверяем, является ли ReplyTo каналом
+	if chatMsg.ReplyToIsChannel() {
+		// Для каналов только меняем статус в БД
+		channelID := chatMsg.ReplyToChannel().ID
+		channelData, err := chatMessageHandler.Rep.GetChannel(channelID)
+		if err != nil {
+			return fmt.Errorf("failed to get channel data for channel %d: %w", channelID, err)
+		}
+		messages.ReplyToOriginalMessage(c, fmt.Sprintf("%s, скажи ауфидерзейн своим нацистским яйцам!", chatMsg.ReplyToAppeal()), chatMsg.ThreadID())
+		time.Sleep(1 * time.Second)
+		channelData.Status = "banned"
+		if err := chatMessageHandler.Rep.SaveChannel(&channelData); err != nil {
+			return fmt.Errorf("failed to ban channel %d: %w", channelID, err)
+		}
+		chatMessageHandler.Bot.Delete(chatMsg.ReplyTo())
+		return messages.ReplyMessage(c, fmt.Sprintf("%s идет нахуй из чатика", chatMsg.ReplyToAppeal()), chatMsg.ThreadID())
+	}
+
+	// Обработка бана пользователя
 	replyTo := chatMsg.ReplyTo()
 	if replyTo == nil || replyTo.Sender == nil {
 		return fmt.Errorf("reply message or sender is nil")
@@ -236,6 +351,25 @@ func handleDecapitate(c tele.Context, chatMessageHandler *ChatMessageHandler) er
 		return messages.ReplyMessage(c, "Ты не можешь банить других админов, соси писос", chatMsg.ThreadID())
 	}
 
+	// Проверяем, является ли ReplyTo каналом
+	if chatMsg.ReplyToIsChannel() {
+		// Для каналов только меняем статус в БД
+		channelID := chatMsg.ReplyToChannel().ID
+		channelData, err := chatMessageHandler.Rep.GetChannel(channelID)
+		if err != nil {
+			return fmt.Errorf("failed to get channel data for channel %d: %w", channelID, err)
+		}
+		messages.ReplyToOriginalMessage(c, "ОБЕЗГЛАВИТЬ ОБОССАТЬ И СЖЕЧЬ!!!", chatMsg.ThreadID())
+		time.Sleep(1 * time.Second)
+		channelData.Status = "banned"
+		if err := chatMessageHandler.Rep.SaveChannel(&channelData); err != nil {
+			return fmt.Errorf("failed to ban channel %d: %w", channelID, err)
+		}
+		chatMessageHandler.Bot.Delete(chatMsg.ReplyTo())
+		return messages.ReplyMessage(c, fmt.Sprintf("%s идет нахуй из чатика. АВЕ АВЕ ПИРОМАН!", chatMsg.ReplyToAppeal()), chatMsg.ThreadID())
+	}
+
+	// Обработка бана пользователя
 	replyTo := chatMsg.ReplyTo()
 	if replyTo == nil || replyTo.Sender == nil {
 		return fmt.Errorf("reply message or sender is nil")
@@ -264,11 +398,18 @@ func handleReport(c tele.Context, chatMessageHandler *ChatMessageHandler) error 
 	if chatMsg == nil {
 		return fmt.Errorf("chat message is nil")
 	}
-	userData := chatMsg.UserData()
-	if userData == nil {
-		return fmt.Errorf("user data is nil")
+
+	var senderID int64
+	if chatMsg.IsFromChannel() {
+		senderID = chatMsg.Channel().ID
+	} else {
+		userData := chatMsg.UserData()
+		if userData == nil {
+			return fmt.Errorf("user data is nil")
+		}
+		senderID = userData.UserID
 	}
-	log.Printf("Got an admin command from %d", userData.UserID)
+	log.Printf("Got an admin command from %d", senderID)
 
 	text := textcases.GetAdminsCommand(chatMsg.Appeal(), chatMessageHandler.AdminsUsernames)
 	if chatMsg.IsReply() {
@@ -283,11 +424,21 @@ func handleWarns(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
 	if chatMsg == nil {
 		return fmt.Errorf("chat message is nil")
 	}
-	userData := chatMsg.UserData()
-	if userData == nil {
-		return fmt.Errorf("user data is nil")
+
+	var warns int
+	if chatMsg.IsFromChannel() {
+		channelData := chatMsg.ChannelData()
+		if channelData == nil {
+			return fmt.Errorf("channel data is nil")
+		}
+		warns = channelData.Warns
+	} else {
+		userData := chatMsg.UserData()
+		if userData == nil {
+			return fmt.Errorf("user data is nil")
+		}
+		warns = userData.Warns
 	}
-	warns := userData.Warns
 
 	switch {
 	case warns == 0:
@@ -305,61 +456,12 @@ func handleWarns(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
 	return nil
 }
 
-func handleSaveBirthday(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
-	chatMsg := chatMessageHandler.ChatMessage
-	if chatMsg == nil {
-		return fmt.Errorf("chat message is nil")
-	}
-	userData := chatMsg.UserData()
-	if userData == nil {
-		return fmt.Errorf("user data is nil")
-	}
-	// Сбрасываем состояние пользователя после сохранения даты рождения
-	chatMessageHandler.SetUserState(userData.UserID, "default")
-	birthday := chatMsg.Text()
-	if birthday == "" {
-		return messages.ReplyMessage(c, "Введите дату рождения в формате DD.MM.YYYY", chatMsg.ThreadID())
-	}
-	birthdayTime, err := time.Parse("02.01.2006", birthday)
-	if err != nil {
-		return messages.ReplyMessage(c, "Неверный формат даты. Пожалуйста, используйте DD.MM.YYYY", chatMsg.ThreadID())
-	}
-	if err := chatMessageHandler.Rep.UpdateUserBirthday(userData.UserID, birthdayTime); err != nil {
-		return messages.ReplyMessage(c, "Не удалось сохранить дату рождения", chatMsg.ThreadID())
-	}
-	return messages.ReplyMessage(c, fmt.Sprintf("Дата рождения %s сохранена", birthdayTime.Format("02.01.2006")), chatMsg.ThreadID())
-}
-
-// handleShowBirthdayMenu показывает инлайн-меню с кнопкой для указания даты рождения
-// Доступно только в личных сообщениях
-func handleShowBirthdayMenu(c tele.Context) error {
-	menu := &tele.ReplyMarkup{ResizeKeyboard: true}
-
-	btnBirthday := menu.Data("🎂 Указать дату рождения", "set_birthday")
-	menu.Inline(menu.Row(btnBirthday))
-
-	text := "Выберите действие:"
-	return c.Reply(text, &tele.SendOptions{ReplyMarkup: menu})
-}
-
-// handleBirthdayCallback обрабатывает нажатие на кнопку "Указать дату рождения"
-func handleBirthdayCallback(c tele.Context) error {
-	// Отвечаем на callback, чтобы убрать индикатор загрузки
-	if err := c.Respond(); err != nil {
-		return err
-	}
-
-	// Просим пользователя ввести дату рождения
-	text := "Пожалуйста, введите дату рождения в формате DD.MM.YYYY (например, 15.03.1990)"
-	return c.Send(text)
-}
-
 func handleNotEnoughRights(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
 	chatMsg := chatMessageHandler.ChatMessage
 	if chatMsg == nil {
 		return fmt.Errorf("chat message is nil")
 	}
-	return messages.ReplyMessage(c, "У тебя недостаточно прав для выполнения этой команды.", chatMsg.threadID)
+	return messages.ReplyMessage(c, "У тебя недостаточно прав для выполнения этой команды.", chatMsg.ThreadID())
 }
 
 func handleKick(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
@@ -375,6 +477,23 @@ func handleKick(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
 		return messages.ReplyMessage(c, "Ты не можешь кикать других админов, соси писос", chatMsg.ThreadID())
 	}
 
+	// Проверяем, является ли ReplyTo каналом
+	if chatMsg.ReplyToIsChannel() {
+		// Для каналов кик не имеет смысла, так как канал нельзя кикнуть из чата
+		// Вместо этого баним канал
+		channelID := chatMsg.ReplyToChannel().ID
+		channelData, err := chatMessageHandler.Rep.GetChannel(channelID)
+		if err != nil {
+			return fmt.Errorf("failed to get channel data for channel %d: %w", channelID, err)
+		}
+		channelData.Status = "banned"
+		if err := chatMessageHandler.Rep.SaveChannel(&channelData); err != nil {
+			return fmt.Errorf("failed to ban channel %d: %w", channelID, err)
+		}
+		return messages.ReplyMessage(c, fmt.Sprintf("%s покидает нас", chatMsg.ReplyToAppeal()), chatMsg.ThreadID())
+	}
+
+	// Обработка кика пользователя
 	replyTo := chatMsg.ReplyTo()
 	if replyTo == nil || replyTo.Sender == nil {
 		return fmt.Errorf("reply message or sender is nil")
@@ -382,17 +501,41 @@ func handleKick(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
 
 	user := replyTo.Sender
 	chatMember := &tele.ChatMember{User: user, Role: tele.Member}
-	err := admins.KickUser(chatMessageHandler.Bot, chatMsg.chat, chatMember)
+	err := admins.KickUser(chatMessageHandler.Bot, chatMsg.Chat(), chatMember)
 	if err != nil {
-		return fmt.Errorf("can't kick user %d: %v", user.ID, err)
+		return fmt.Errorf("can't kick user %d: %w", user.ID, err)
 	}
-	return messages.ReplyMessage(c, fmt.Sprintf("%s покидает нас", chatMsg.replyToAppeal), chatMsg.ThreadID())
+	return messages.ReplyMessage(c, fmt.Sprintf("%s покидает нас", chatMsg.ReplyToAppeal()), chatMsg.ThreadID())
 }
 
+// Обработка команды "Предупредить всех" (просто прикольное сообщение в чат)
 func handleWarnAll(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
 	chatMsg := chatMessageHandler.ChatMessage
 	if chatMsg == nil {
 		return fmt.Errorf("chat message is nil")
 	}
 	return messages.ReplyFormattedHTML(c, "Неужели мало сегодняшних жертв? Надо, чтобы в чатике продолжали сраться и страдать тысячи людей? <b>Астанавитесь!</b> Всем предупреждение!", chatMsg.ThreadID())
+}
+
+// Обработка команды показать информацию по сегодняшнему квизу (для админов)
+func handleShowQuizInfo(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
+	time := chatMessageHandler.QuizManager.TodayQuiz.QuizTime.In(database.MoscowTZ).Format("15:04")
+	text := fmt.Sprintf("Информация о сегодняшнем квизе:\nВремя проведения: %s\n", time)
+	if chatMessageHandler.QuizManager.QuizAlreadyWas {
+		winnerID := chatMessageHandler.QuizManager.WinnerID
+		winner, err := chatMessageHandler.Rep.GetUser(winnerID)
+		if err != nil {
+			return c.Send("Внутренняя ошибка базы данных. Попробуй еще раз")
+		}
+		text = text + fmt.Sprintf("Квиз сегодня уже был проведен\nПобедитель: @%s (ID %d)\n", winner.Username, winner.UserID)
+	} else {
+		text = text + "Квиза сегодня ещё не было\n"
+	}
+	answer := chatMessageHandler.QuizManager.TodayQuiz.SongName
+	if chatMessageHandler.QuizManager.TodayQuiz.IsClip {
+		text = text + fmt.Sprintf("Сегодня кадр из клипа\nОтвет: %s", answer)
+	} else {
+		text = text + fmt.Sprintf("Сегодня цитата из песни\nОтвет: %s", answer)
+	}
+	return c.Send(text)
 }

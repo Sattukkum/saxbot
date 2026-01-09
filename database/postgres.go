@@ -3,11 +3,14 @@ package database
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
+
+var MoscowTZ = time.FixedZone("Moscow", 3*60*60)
 
 type PostgresRepository struct {
 	db *gorm.DB
@@ -28,17 +31,17 @@ func InitPostgreSQL(host, user, password, dbname string, port int, sslmode strin
 		Logger: logger.Default.LogMode(logger.Info),
 	})
 	if err != nil {
-		return db, fmt.Errorf("failed to connect to PostgreSQL: %v", err)
+		return db, fmt.Errorf("failed to connect to PostgreSQL: %w", err)
 	}
 
 	sqlDB, err := db.DB()
 	if err != nil {
-		return db, fmt.Errorf("failed to get SQL DB instance: %v", err)
+		return db, fmt.Errorf("failed to get SQL DB instance: %w", err)
 	}
 
 	err = sqlDB.Ping()
 	if err != nil {
-		return db, fmt.Errorf("failed to ping PostgreSQL: %v", err)
+		return db, fmt.Errorf("failed to ping PostgreSQL: %w", err)
 	}
 
 	log.Println("Successfully connected to PostgreSQL")
@@ -63,11 +66,12 @@ func AutoMigrate(db *gorm.DB) error {
 
 	err := db.AutoMigrate(
 		&User{},
+		&Channel{},
 		&Quiz{},
 		&Admin{},
 	)
 	if err != nil {
-		return fmt.Errorf("failed to migrate database: %v", err)
+		return fmt.Errorf("failed to migrate database: %w", err)
 	}
 
 	log.Println("Database migration completed successfully")
@@ -81,35 +85,35 @@ func (p *PostgresRepository) GetDatabaseStats() (map[string]interface{}, error) 
 	var userCount int64
 	err := p.db.Model(&User{}).Count(&userCount).Error
 	if err != nil {
-		return nil, fmt.Errorf("failed to count users: %v", err)
+		return nil, fmt.Errorf("failed to count users: %w", err)
 	}
 	stats["total_users"] = userCount
 
 	var activeUserCount int64
 	err = p.db.Model(&User{}).Where("status = ?", "active").Count(&activeUserCount).Error
 	if err != nil {
-		return nil, fmt.Errorf("failed to count active users: %v", err)
+		return nil, fmt.Errorf("failed to count active users: %w", err)
 	}
 	stats["active_users"] = activeUserCount
 
 	var adminCount int64
 	err = p.db.Model(&User{}).Where("is_admin = ?", true).Count(&adminCount).Error
 	if err != nil {
-		return nil, fmt.Errorf("failed to count admins: %v", err)
+		return nil, fmt.Errorf("failed to count admins: %w", err)
 	}
 	stats["admin_users"] = adminCount
 
 	var quizCount int64
 	err = p.db.Model(&Quiz{}).Count(&quizCount).Error
 	if err != nil {
-		return nil, fmt.Errorf("failed to count quizzes: %v", err)
+		return nil, fmt.Errorf("failed to count quizzes: %w", err)
 	}
 	stats["total_quizzes"] = quizCount
 
 	var activeQuizCount int64
 	err = p.db.Model(&Quiz{}).Where("is_active = ?", true).Count(&activeQuizCount).Error
 	if err != nil {
-		return nil, fmt.Errorf("failed to count active quizzes: %v", err)
+		return nil, fmt.Errorf("failed to count active quizzes: %w", err)
 	}
 	stats["active_quizzes"] = activeQuizCount
 
@@ -124,12 +128,12 @@ func (p *PostgresRepository) HealthCheck() error {
 
 	sqlDB, err := p.db.DB()
 	if err != nil {
-		return fmt.Errorf("failed to get SQL DB instance: %v", err)
+		return fmt.Errorf("failed to get SQL DB instance: %w", err)
 	}
 
 	err = sqlDB.Ping()
 	if err != nil {
-		return fmt.Errorf("failed to ping database: %v", err)
+		return fmt.Errorf("failed to ping database: %w", err)
 	}
 
 	return nil
@@ -143,7 +147,7 @@ func (p *PostgresRepository) SetConnectionPool(maxIdleConns, maxOpenConns int) e
 
 	sqlDB, err := p.db.DB()
 	if err != nil {
-		return fmt.Errorf("failed to get SQL DB instance: %v", err)
+		return fmt.Errorf("failed to get SQL DB instance: %w", err)
 	}
 
 	sqlDB.SetMaxIdleConns(maxIdleConns)

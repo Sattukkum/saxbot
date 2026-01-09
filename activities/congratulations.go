@@ -59,7 +59,7 @@ func ManageCongratulations(bot *tele.Bot, quizChatID int64, rep *database.Postgr
 				continue
 			}
 			time.Sleep(3 * time.Second)
-			bot.Send(tele.ChatID(quizChatID), "Товарищ! Если хочешь, чтобы бот и тебя поздравил с днем рождения, напиши мне (КПСС боту) в личные сообщения", opts)
+			bot.Send(tele.ChatID(quizChatID), "Товарищ! Если хочешь, чтобы Ник и тебя поздравил с днем рождения, напиши мне (КПСС боту) в личные сообщения", opts)
 		}
 		time.Sleep(24 * time.Hour)
 	}

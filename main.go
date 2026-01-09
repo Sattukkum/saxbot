@@ -5,6 +5,7 @@ import (
 	"log"
 	"math/rand"
 	"saxbot/activities"
+	"saxbot/admins"
 	"saxbot/database"
 	"saxbot/environment"
 	"saxbot/handlers"
@@ -94,6 +95,16 @@ func main() {
 
 	// Управление поздравлениями
 	go activities.ManageCongratulations(bot, quizChatID, rep, quizManager)
+
+	chat := &tele.Chat{ID: quizChatID}
+
+	// Размут пользователей по таймеру
+	go func() {
+		for {
+			admins.UnmuteUsersByTime(bot, chat, rep)
+			time.Sleep(time.Minute)
+		}
+	}()
 
 	// Инициализация обработчика сообщений чата
 	chatMessageHandler := handlers.ChatMessageHandler{

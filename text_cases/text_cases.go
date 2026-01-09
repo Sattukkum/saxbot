@@ -91,6 +91,7 @@ func GetWarnCase(username string, lenaFlag bool) string {
 		fmt.Sprintf("Я не согласен ни с одним предупреждением, выданным %s, но готов умереть за его право их получить!", username),
 		fmt.Sprintf("У %s только два союзника — предупреждение и извинение!", username),
 		"Детка, ты выполнила задание на 5 с плюсом!\nТы меня зажгла. Появилось очень сильное и реальное желание дать тебе предупреждение.",
+		fmt.Sprintf("%s и Заболотный получают по предупреждению. Кстати, а кто такой Заболотный?", username),
 	}
 
 	return warnCases[rand.Intn(len(warnCases))]
@@ -388,7 +389,7 @@ var clipScreensDirs = map[string]string{
 	"No Money Be Happy":      "no_money",
 	"Красный Кулак":          "red_fist",
 	"Zavod":                  "zavod",
-	"Rocketman":              "rocketman",
+	"Rocket Man":             "rocketman",
 	"Серп и Молот":           "serp_molot",
 	"Village Boy":            "village_boy",
 	"Ядерная Зима":           "zima",

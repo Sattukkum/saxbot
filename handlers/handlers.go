@@ -15,10 +15,17 @@ import (
 )
 
 func HandleChatMessage(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
-	log.Printf("Received message: '%s' from user %d in chat %d", c.Message().Text, c.Message().Sender.ID, c.Message().Chat.ID)
+	msg := c.Message()
+	var logMsg string
+	if msg.SenderChat != nil {
+		logMsg = fmt.Sprintf("Received message: '%s' from channel %d in chat %d", msg.Text, msg.SenderChat.ID, msg.Chat.ID)
+	} else {
+		logMsg = fmt.Sprintf("Received message: '%s' from user %d in chat %d", msg.Text, msg.Sender.ID, msg.Chat.ID)
+	}
+	log.Println(logMsg)
 
-	if !slices.Contains(chatMessageHandler.AllowedChats, c.Message().Chat.ID) {
-		log.Printf("Получил сообщение в чат %d. Ожидаются чаты %v", c.Message().Chat.ID, chatMessageHandler.AllowedChats)
+	if !slices.Contains(chatMessageHandler.AllowedChats, msg.Chat.ID) {
+		log.Printf("Получил сообщение в чат %d. Ожидаются чаты %v", msg.Chat.ID, chatMessageHandler.AllowedChats)
 		return nil
 	}
 
@@ -32,7 +39,12 @@ func HandleChatMessage(c tele.Context, chatMessageHandler *ChatMessageHandler) e
 	// Сохраняем ссылку на ChatMessage в handler для использования в других функциях
 	chatMessageHandler.ChatMessage = chatMessage
 
-	// Проверяем статус пользователя
+	// Обрабатываем сообщения от каналов отдельно
+	if chatMessage.IsFromChannel() {
+		return handleChannelChatMessage(c, chatMessageHandler)
+	}
+
+	// Обработка сообщений от пользователей
 	userData := chatMessage.UserData()
 	if userData == nil {
 		log.Printf("UserData is nil, skipping message processing")
@@ -101,6 +113,34 @@ func HandlePrivateMessage(c tele.Context, chatMessageHandler *ChatMessageHandler
 	} else {
 		return handleUserPrivateMessage(c, chatMessageHandler)
 	}
+}
+
+// handleChannelChatMessage обрабатывает сообщения от каналов в чатах
+func handleChannelChatMessage(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
+	chatMsg := chatMessageHandler.ChatMessage
+	if chatMsg == nil {
+		return fmt.Errorf("chat message is nil")
+	}
+
+	channelData := chatMsg.ChannelData()
+	if channelData == nil {
+		log.Printf("ChannelData is nil, skipping message processing")
+		return nil
+	}
+
+	// Проверяем статус канала
+	if channelData.Status == "muted" || channelData.Status == "banned" {
+		chatMessageHandler.Bot.Delete(c.Message())
+		return nil
+	}
+
+	// Каналы-админы могут использовать админские команды
+	if chatMsg.ChatAdmin() {
+		return handleAdminChatMessage(c, chatMessageHandler, false)
+	}
+
+	// Обычные каналы обрабатываются как пользовательские сообщения
+	return handleUserChatMessage(c, chatMessageHandler)
 }
 
 func HandleUserJoined(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
@@ -297,6 +337,12 @@ func HandleCallback(c tele.Context, chatMessageHandler *ChatMessageHandler) erro
 		userID := callback.Sender.ID
 		chatMessageHandler.SetUserState(userID, "set_birthday")
 		return handleBirthdayCallback(c)
+
+	case "show_muted":
+		return handleMutedCallback(c, chatMessageHandler)
+
+	case "show_restricted":
+		return handleRestrictedCallback(c, chatMessageHandler)
 	}
 
 	return nil
@@ -306,13 +352,46 @@ func autokick(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, db *databas
 	time.Sleep(5 * time.Minute)
 	userData, err := db.GetUser(user.User.ID)
 	if err != nil {
-		return fmt.Errorf("failed to get user %d: %v", user.User.ID, err)
+		return fmt.Errorf("failed to get user %d: %w", user.User.ID, err)
 	}
 	if userData.Status == "new_user" {
 		err = admins.KickUser(bot, chat, user)
 		if err != nil {
-			return fmt.Errorf("failed to kick user %d: %v", userData.UserID, err)
+			return fmt.Errorf("failed to kick user %d: %w", userData.UserID, err)
 		}
 	}
 	return nil
+}
+
+func ManageRunningQuiz(c tele.Context, chatMessageHandler *ChatMessageHandler) {
+	todayQuiz, quizRunning, _, _, _, _ := chatMessageHandler.QuizManager.GetState()
+	log.Printf("Quiz running: %v", quizRunning)
+	log.Println(c.Message().Text)
+	log.Println(todayQuiz.SongName)
+	if strings.EqualFold(c.Message().Text, todayQuiz.SongName) {
+		if slices.Contains(chatMessageHandler.AdminsList, c.Message().Sender.ID) || chatMessageHandler.ChatMessage.chatAdmin {
+			messages.ReplyMessage(c, "Ты и так уже админ, дружок-пирожок. Дай выиграть тем, кто пока ещё нет", c.Message().ThreadID)
+			return
+		}
+		chatMessageHandler.QuizManager.SetQuizRunning(false)
+		chatMessageHandler.QuizManager.SetQuizAlreadyWas(true)
+		chatMessageHandler.Rep.SetQuizAlreadyWas()
+		winnerTitle := textcases.GetRandomTitle()
+		messages.ReplyMessage(c, fmt.Sprintf("Правильно! Песня: %s", todayQuiz.SongName), c.Message().ThreadID)
+		time.Sleep(100 * time.Millisecond)
+		messages.ReplyMessage(c, fmt.Sprintf("Поздравляем, %s! Ты победил и получил титул %s до следующего квиза!", chatMessageHandler.ChatMessage.appeal, winnerTitle), c.Message().ThreadID)
+		chatMember := &tele.ChatMember{User: c.Message().Sender, Role: tele.Member}
+		admins.SetPref(chatMessageHandler.Bot, c.Chat(), chatMember, winnerTitle)
+		quiz, err := chatMessageHandler.Rep.GetLastCompletedQuiz()
+		if err != nil {
+			log.Printf("failed to get last completed quiz: %v", err)
+		} else if quiz != nil {
+			err = chatMessageHandler.Rep.SetQuizWinner(quiz.ID, c.Message().Sender.ID)
+			if err != nil {
+				log.Printf("failed to set user %d as a quiz winner %v", c.Message().Sender.ID, err)
+			}
+		}
+		// Обновляем isLastQuizClip после завершения квиза для правильного чередования
+		chatMessageHandler.QuizManager.SetIsLastQuizClip(todayQuiz.IsClip)
+	}
 }

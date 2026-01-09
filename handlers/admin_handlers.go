@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"fmt"
-	"saxbot/activities"
+	"saxbot/admins"
 	"saxbot/messages"
 	"strconv"
 	"strings"
@@ -36,7 +36,7 @@ func handleAdminChatMessage(c tele.Context, chatMessageHandler *ChatMessageHandl
 		default:
 			// Для победителя другие команды недоступны, обрабатываем как обычное сообщение
 			if chatMessageHandler.QuizManager.IsRunning() {
-				activities.ManageRunningQuiz(chatMessageHandler.Rep, chatMessageHandler.Bot, chatMessageHandler.QuizManager, c, chatMsg.Appeal())
+				ManageRunningQuiz(c, chatMessageHandler)
 			}
 			return nil
 		}
@@ -134,7 +134,7 @@ func handleAdminChatMessage(c tele.Context, chatMessageHandler *ChatMessageHandl
 
 	// Если квиз запущен, обрабатываем ответы на квиз
 	if chatMessageHandler.QuizManager.IsRunning() {
-		activities.ManageRunningQuiz(chatMessageHandler.Rep, chatMessageHandler.Bot, chatMessageHandler.QuizManager, c, chatMsg.Appeal())
+		ManageRunningQuiz(c, chatMessageHandler)
 	}
 
 	return nil
@@ -151,10 +151,31 @@ func handleAdminPrivateMessage(c tele.Context, chatMessageHandler *ChatMessageHa
 	// Обработка команд в личных сообщениях
 	switch text {
 	case "/start", "меню", "/menu":
-		return handleShowBirthdayMenu(c)
+		return handleAdminMenu(c)
 	case "/state":
 		currentState := chatMessageHandler.GetUserState(userID)
 		return messages.ReplyMessage(c, fmt.Sprintf("Текущее состояние: %s", currentState), chatMsg.ThreadID())
+	case "/quiz", "quiz", "квиз":
+		return handleShowQuizInfo(c, chatMessageHandler)
+	}
+
+	if strings.HasPrefix(text, "размут") {
+		parts := strings.Split(text, " ")
+		if len(parts) != 2 {
+			return c.Send("Не распознал команду. Вводи четко в формате \"Размут [id]\"")
+		}
+		id, err := strconv.Atoi(parts[1])
+		if err != nil {
+			return c.Send("Не распознал команду. Вводи четко в формате \"Размут [id]\"")
+		}
+		userID := int64(id)
+		chat := &tele.Chat{ID: chatMessageHandler.QuizManager.QuizChatID}
+		chatMember, err := chatMessageHandler.Bot.ChatMemberOf(chat, &tele.User{ID: userID})
+		if err != nil {
+			return c.Send(fmt.Sprintf("Ошибка Телеграмма %v\nПопробуй ещё раз, если повторится, дерни Бабича", err))
+		}
+		admins.UnmuteUser(chatMessageHandler.Bot, chat, chatMember, chatMessageHandler.Rep)
+		return c.Send(fmt.Sprintf("Размутил пользователя %d", userID))
 	}
 
 	// Проверка на формат даты рождения (DD.MM.YYYY)
