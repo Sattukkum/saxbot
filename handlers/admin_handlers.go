@@ -105,6 +105,13 @@ func handleAdminChatMessage(c tele.Context, chatMessageHandler *ChatMessageHandl
 		} else {
 			return handleNotEnoughRights(c, chatMessageHandler)
 		}
+	case "минусануть":
+		// Джуниоры и сеньоры могут использовать эту команду
+		if chatMsg.AdminRole() == "senior" || chatMsg.AdminRole() == "junior" {
+			return handleUnwarn(c, chatMessageHandler)
+		} else {
+			return handleNotEnoughRights(c, chatMessageHandler)
+		}
 	}
 
 	// Обработка команды мута (может содержать число)

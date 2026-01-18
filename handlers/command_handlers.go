@@ -61,7 +61,7 @@ func handleWarn(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
 	replyTo := chatMsg.ReplyTo()
 	if replyTo != nil {
 		replyText := strings.ToLower(replyTo.Text)
-		if strings.EqualFold(replyText, "лена") || strings.EqualFold(replyText, "елена") || strings.EqualFold(replyText, "елена вячеславовна") {
+		if strings.EqualFold(replyText, "лена") || strings.EqualFold(replyText, "елена") || strings.EqualFold(replyText, "елена вячеславовна") || strings.Contains(replyText, "лена") {
 			text = textcases.GetWarnCase(chatMsg.ReplyToAppeal(), true)
 		} else {
 			text = textcases.GetWarnCase(chatMsg.ReplyToAppeal(), false)
@@ -538,4 +538,37 @@ func handleShowQuizInfo(c tele.Context, chatMessageHandler *ChatMessageHandler) 
 		text = text + fmt.Sprintf("Сегодня цитата из песни\nОтвет: %s", answer)
 	}
 	return c.Send(text)
+}
+
+func handleUnwarn(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
+	chatMsg := chatMessageHandler.ChatMessage
+	if chatMsg == nil {
+		return fmt.Errorf("chat message is nil")
+	}
+	if !chatMsg.IsReply() {
+		return messages.ReplyMessage(c, "Кого лишить предупреждения?", chatMsg.ThreadID())
+	}
+
+	replyToID := chatMsg.ReplyToID()
+
+	// Проверяем, является ли ReplyTo каналом
+	if chatMsg.ReplyToIsChannel() {
+		// Для каналов используем UpdateChannelWarns
+		if err := chatMessageHandler.Rep.UpdateChannelWarns(replyToID, -1); err != nil {
+			log.Printf("Failed to save warns increase for channel %d: %v", replyToID, err)
+		}
+	} else {
+		// Для пользователей используем UpdateUserWarns
+		if err := chatMessageHandler.Rep.UpdateUserWarns(replyToID, -1); err != nil {
+			log.Printf("Failed to save warns increase for user %d: %v", replyToID, err)
+		} else {
+			replyToUserData := chatMsg.ReplyToUserData()
+			if replyToUserData != nil {
+				replyToUserData.Warns++
+			}
+		}
+	}
+
+	text := fmt.Sprintf("%s лишается нажитого непосильным трудом предупреждения. Это надо было серьезно разозлить админа!", chatMsg.ReplyToAppeal())
+	return messages.ReplyToOriginalMessage(c, text, chatMsg.ThreadID())
 }

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"saxbot/admins"
-	"saxbot/database"
 	"saxbot/messages"
 	textcases "saxbot/text_cases"
 	"slices"
@@ -206,8 +205,13 @@ func HandleUserJoined(c tele.Context, chatMessageHandler *ChatMessageHandler) er
 			ThreadID:    c.Message().ThreadID,
 		}
 
-		go autokick(chatMessageHandler.Bot, c.Message().Chat, chatMember, chatMessageHandler.Rep)
-		return c.Reply(textcases.GetUserJoinedMessage(appeal), opts)
+		msg, err := chatMessageHandler.Bot.Reply(c.Message(), textcases.GetUserJoinedMessage(appeal), opts)
+		if err != nil {
+			log.Printf("Failed to send user joined message: %v", err)
+			return nil
+		}
+		go autokick(chatMember, chatMessageHandler, c, msg)
+		return nil
 	} else {
 		// Пользователь был замучен/рестриктнут/забанен ранее
 		// Применяем ограничения согласно текущему статусу
@@ -348,18 +352,20 @@ func HandleCallback(c tele.Context, chatMessageHandler *ChatMessageHandler) erro
 	return nil
 }
 
-func autokick(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, db *database.PostgresRepository) error {
+func autokick(user *tele.ChatMember, chatMessageHandler *ChatMessageHandler, c tele.Context, welcomeMessage *tele.Message) error {
 	time.Sleep(5 * time.Minute)
-	userData, err := db.GetUser(user.User.ID)
+	userData, err := chatMessageHandler.Rep.GetUser(user.User.ID)
 	if err != nil {
 		return fmt.Errorf("failed to get user %d: %w", user.User.ID, err)
 	}
 	if userData.Status == "new_user" {
-		err = admins.KickUser(bot, chat, user)
+		err = admins.KickUser(chatMessageHandler.Bot, c.Chat(), user)
 		if err != nil {
 			return fmt.Errorf("failed to kick user %d: %w", userData.UserID, err)
 		}
 	}
+	chatMessageHandler.Bot.Delete(c.Message())
+	chatMessageHandler.Bot.Delete(welcomeMessage)
 	return nil
 }
 

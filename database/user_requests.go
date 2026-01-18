@@ -301,6 +301,7 @@ func (p *PostgresRepository) GetUsersWithBirthdayToday() ([]User, error) {
 			`
 			birthday IS NOT NULL
 			AND EXTRACT(YEAR FROM birthday) > 1900
+			AND status != 'banned'
 			AND (
 				(EXTRACT(MONTH FROM birthday) = ? AND EXTRACT(DAY FROM birthday) = ?)
 			)
@@ -314,6 +315,7 @@ func (p *PostgresRepository) GetUsersWithBirthdayToday() ([]User, error) {
 			`
 			birthday IS NOT NULL
 			AND EXTRACT(YEAR FROM birthday) > 1900
+			AND status != 'banned'
 			AND EXTRACT(MONTH FROM birthday) = 2
 			AND EXTRACT(DAY FROM birthday) = 29
 			`,

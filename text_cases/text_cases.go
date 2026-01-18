@@ -108,7 +108,7 @@ func GetInfo() string {
 Поддержать автора: <a href="%s">Донат</a>
 Бустануть группу: <a href="%s">Boost</a>
 
-Ближайший концерт - 11 января, Москва: <a href="%s">Купить билет</a>
+Ближайший концерт будет в мае — Санкт-Петербург. Следите за новостями!
 
 Правила чатика:
 - не флудить
@@ -121,7 +121,7 @@ func GetInfo() string {
 Со временем там появится ещё много классных функций, так что следи за обновлениями!
 
 Наслаждайся общением с нежитью!
-`, LinksData.YandexLink, LinksData.YoutubeLink, LinksData.VkLink, LinksData.DonateLink, LinksData.BoostLink, LinksData.ConcertLink)
+`, LinksData.YandexLink, LinksData.YoutubeLink, LinksData.VkLink, LinksData.DonateLink, LinksData.BoostLink)
 }
 
 var SongQuotes = map[string]string{
@@ -311,26 +311,26 @@ func GetAdminsCommand(user string, admins []string) string {
 
 func GetAd(previousTheme int, r *rand.Rand) (imagePath string, caption string, currentTheme int) {
 	const (
-		admins  = 6
-		donate  = 5
-		music   = 3
-		concert = 1
+		admins = 6
+		donate = 5
+		music  = 3
+		// concert = 1
 	)
 
 	LinksData := environment.GetDataEnvironment()
 
 	var captions = map[string]string{
-		"admins":  "Товарищ! Веди себя в чате хорошо и уважительно относись к другим!\nПомни, что в случае несанкционированной рекламы или неприемлимого поведения несознательных элементов, ты всегда можешь позвать компетентные органы командой \"Админ\".",
-		"donate":  fmt.Sprintf("Товарищ! Если ты хочешь поддержать артиста, ты всегда можешь помочь выходу новых песен и музыкальных клипов своим рублем!\n<a href=\"%s\">Донат</a>", LinksData.DonateLink),
-		"music":   fmt.Sprintf("Товарищ! Не забывай, что ежедневные прослушивания песен и просмотр клипов укрепляют здоровье и приносят радость! Обязательно попробуй послушать песни, которые ещё не слышал!\n<a href=\"%s\">Слушать песни</a>\n<a href=\"%s\">Смотреть клипы</a>", LinksData.YandexLink, LinksData.YoutubeLink),
-		"concert": fmt.Sprintf("Товарищ! Нежить собирается на концерте 11 января в Москве! Не пропусти!\n<a href=\"%s\">Купить билет</a>", LinksData.ConcertLink),
+		"admins": "Товарищ! Веди себя в чате хорошо и уважительно относись к другим!\nПомни, что в случае несанкционированной рекламы или неприемлимого поведения несознательных элементов, ты всегда можешь позвать компетентные органы командой \"Админ\".",
+		"donate": fmt.Sprintf("Товарищ! Если ты хочешь поддержать артиста, ты всегда можешь помочь выходу новых песен и музыкальных клипов своим рублем!\n<a href=\"%s\">Донат</a>", LinksData.DonateLink),
+		"music":  fmt.Sprintf("Товарищ! Не забывай, что ежедневные прослушивания песен и просмотр клипов укрепляют здоровье и приносят радость! Обязательно попробуй послушать песни, которые ещё не слышал!\n<a href=\"%s\">Слушать песни</a>\n<a href=\"%s\">Смотреть клипы</a>", LinksData.YandexLink, LinksData.YoutubeLink),
+		// "concert": fmt.Sprintf("Товарищ! Концерт в Москве уже сегодня! Успей купить билет! Последний шанс!\n<a href=\"%s\">Купить билет</a>", LinksData.ConcertLink),
 	}
 
 	var imagePaths = map[string]string{
-		"admins":  "images/admins%d.jpg",
-		"donate":  "images/donate%d.jpg",
-		"music":   "images/music%d.jpg",
-		"concert": "images/concert%d.jpg",
+		"admins": "images/admins%d.jpg",
+		"donate": "images/donate%d.jpg",
+		"music":  "images/music%d.jpg",
+		// "concert": "images/concert%d.jpg",
 	}
 
 	var theme string
@@ -343,15 +343,15 @@ func GetAd(previousTheme int, r *rand.Rand) (imagePath string, caption string, c
 		theme = "donate"
 	case 3:
 		theme = "music"
-	case 4:
-		theme = "concert"
+	// case 4:
+	// 	theme = "concert"
 	default:
 		log.Printf("Неожиданная тема! %d", previousTheme)
 		theme = "admins"
 	}
 
 	currentTheme = previousTheme + 1
-	if currentTheme > 4 {
+	if currentTheme > 3 {
 		currentTheme = 1
 	}
 
@@ -362,8 +362,8 @@ func GetAd(previousTheme int, r *rand.Rand) (imagePath string, caption string, c
 		randomizer = r.Intn(donate) + 1
 	case "music":
 		randomizer = r.Intn(music) + 1
-	case "concert":
-		randomizer = r.Intn(concert) + 1
+	// case "concert":
+	// 	randomizer = r.Intn(concert) + 1
 	default:
 		log.Printf("Неожиданная тема! %s", theme)
 		randomizer = 1
@@ -380,7 +380,7 @@ var clipScreensDirs = map[string]string{
 	"Ghost of Communism":     "ghost",
 	"Последний Диктатор":     "boss",
 	"Russian Cyberpunk Rave": "cyberpunk",
-	"Царь":                   "czar",
+	"Tsar":                   "czar",
 	"Домой":                  "domoy",
 	"Каникулы в КНДР":        "kndr",
 	"Goodbye, America":       "goodbye",
