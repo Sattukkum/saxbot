@@ -1,12 +1,14 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"saxbot/admins"
 	"saxbot/database"
 	"saxbot/messages"
 	textcases "saxbot/text_cases"
+	"strconv"
 	"strings"
 	"time"
 
@@ -60,12 +62,7 @@ func handleWarn(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
 	var text string
 	replyTo := chatMsg.ReplyTo()
 	if replyTo != nil {
-		replyText := strings.ToLower(replyTo.Text)
-		if strings.EqualFold(replyText, "лена") || strings.EqualFold(replyText, "елена") || strings.EqualFold(replyText, "елена вячеславовна") || strings.Contains(replyText, "лена") {
-			text = textcases.GetWarnCase(chatMsg.ReplyToAppeal(), true)
-		} else {
-			text = textcases.GetWarnCase(chatMsg.ReplyToAppeal(), false)
-		}
+		text = textcases.GetWarnCase(chatMsg.ReplyToAppeal())
 	}
 	return messages.ReplyToOriginalMessage(c, text, chatMsg.ThreadID())
 }
@@ -571,4 +568,34 @@ func handleUnwarn(c tele.Context, chatMessageHandler *ChatMessageHandler) error 
 
 	text := fmt.Sprintf("%s лишается нажитого непосильным трудом предупреждения. Это надо было серьезно разозлить админа!", chatMsg.ReplyToAppeal())
 	return messages.ReplyToOriginalMessage(c, text, chatMsg.ThreadID())
+}
+
+func handleCondemn(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
+	text := textcases.GetCondemnMessage(chatMessageHandler.ChatMessage.ReplyToAppeal())
+	return messages.ReplyToOriginalMessage(c, text, chatMessageHandler.ChatMessage.ThreadID())
+}
+
+func handlePromoteAdmin(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
+	msg := chatMessageHandler.ChatMessage
+	if msg == nil {
+		return errors.New("chat message is nil")
+	}
+	parts := strings.Split(msg.Text(), " ")
+	if len(parts) != 2 {
+		c.Reply("Неправильный формат команды (len)")
+		return fmt.Errorf("got unexpected len %d, expected 2", len(parts))
+	}
+	idStr := parts[1]
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		c.Reply("Неправильный формат команды (Atoi)")
+		return fmt.Errorf("couldn't convert ID to int, %w", err)
+	}
+	id64 := int64(id)
+	err = chatMessageHandler.Rep.PromoteAdmin(id64, "+")
+	if err != nil {
+		c.Reply("Внутренняя ошибка базы данных")
+		return fmt.Errorf("couldn't promote admin %d: %w", id64, err)
+	}
+	return c.Reply(fmt.Sprintf("Успешно продвинули админа %d", id64))
 }

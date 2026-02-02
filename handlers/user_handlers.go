@@ -44,7 +44,7 @@ func handleUserPrivateMessage(c tele.Context, chatMessageHandler *ChatMessageHan
 	// Обработка команд в личных сообщениях
 	switch text {
 	case "/start", "меню", "/menu":
-		return handleShowBirthdayMenu(c)
+		return handleUserMenu(c)
 	case "/state":
 		currentState := chatMessageHandler.GetUserState(userID)
 		return messages.ReplyMessage(c, fmt.Sprintf("Текущее состояние: %s", currentState), chatMsg.ThreadID())

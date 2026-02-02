@@ -32,6 +32,7 @@ RUN addgroup -S saxbot && adduser -S saxbot -G saxbot
 WORKDIR /app
 
 COPY images ./images
+COPY music ./music
 
 # Создаем директорию для логов
 RUN mkdir -p /app/logs && chown saxbot:saxbot /app/logs

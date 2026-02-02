@@ -112,6 +112,13 @@ func handleAdminChatMessage(c tele.Context, chatMessageHandler *ChatMessageHandl
 		} else {
 			return handleNotEnoughRights(c, chatMessageHandler)
 		}
+	case "осуждаю":
+		// Джуниоры и сеньоры могут использовать эту команду
+		if chatMsg.AdminRole() == "senior" || chatMsg.AdminRole() == "junior" {
+			return handleCondemn(c, chatMessageHandler)
+		} else {
+			return handleNotEnoughRights(c, chatMessageHandler)
+		}
 	}
 
 	// Обработка команды мута (может содержать число)
@@ -183,6 +190,8 @@ func handleAdminPrivateMessage(c tele.Context, chatMessageHandler *ChatMessageHa
 		}
 		admins.UnmuteUser(chatMessageHandler.Bot, chat, chatMember, chatMessageHandler.Rep)
 		return c.Send(fmt.Sprintf("Размутил пользователя %d", userID))
+	} else if strings.HasPrefix(text, "/promote") {
+		return handlePromoteAdmin(c, chatMessageHandler)
 	}
 
 	// Проверка на формат даты рождения (DD.MM.YYYY)

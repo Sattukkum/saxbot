@@ -57,6 +57,17 @@ type Admin struct {
 	AdminRole string `gorm:"size:500,default:'junior'" json:"admin_role"` // Два уровня - junior и senior. Отличаются возможностью банить
 }
 
+type Audio struct {
+	ID          int    `gorm:"primaryKey" json:"id"`
+	AlbumID     int    `gorm:"not null" json:"album_id"`
+	TrackNumber int    `gorm:"not null" json:"track_number"` // Порядковый номер трека в альбоме
+	Name        string `gorm:"size:500" json:"name"`
+	Description string `gorm:"type:text" json:"description"`
+	FileID      string `gorm:"type:text" json:"file_id"`
+	UniqueID    string `gorm:"type:text" json:"unique_id"`
+	ClipURL     string `gorm:"type:text" json:"clip_url"`
+}
+
 func (User) TableName() string {
 	return "users"
 }
@@ -71,4 +82,8 @@ func (Quiz) TableName() string {
 
 func (Admin) TableName() string {
 	return "admins"
+}
+
+func (Audio) TableName() string {
+	return "audios"
 }

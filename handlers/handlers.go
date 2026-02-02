@@ -7,6 +7,7 @@ import (
 	"saxbot/messages"
 	textcases "saxbot/text_cases"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -267,9 +268,9 @@ func HandleCallback(c tele.Context, chatMessageHandler *ChatMessageHandler) erro
 		return fmt.Errorf("callback is nil")
 	}
 
-	log.Printf("Received callback: '%s' from user %d", callback.Data, callback.Sender.ID)
-
 	callbackData := strings.TrimSpace(callback.Data)
+	callbackData = strings.ReplaceAll(callbackData, "\n", "")
+	log.Printf("Received callback: '%s' from user %d", callback.Data, callback.Sender.ID)
 
 	// Обработка колбэка для подтверждения, что пользователь не бот
 	switch callbackData {
@@ -347,6 +348,40 @@ func HandleCallback(c tele.Context, chatMessageHandler *ChatMessageHandler) erro
 
 	case "show_restricted":
 		return handleRestrictedCallback(c, chatMessageHandler)
+
+	case "show_music":
+		return handleShowMusicCallback(c, chatMessageHandler)
+
+	case "main_menu":
+		userID := callback.Sender.ID
+		if slices.Contains(chatMessageHandler.AdminsList, userID) {
+			return handleAdminMenu(c)
+		} else {
+			return handleUserMenu(c)
+		}
+	}
+
+	// Выбор альбома: album_1 .. album_5 (только ЛС + админ)
+	if strings.HasPrefix(callbackData, "album_") {
+		albumID, err := strconv.Atoi(strings.TrimPrefix(callbackData, "album_"))
+		if err != nil || albumID < 1 || albumID > 5 {
+			return nil
+		}
+		return handleAlbumCallback(c, chatMessageHandler, albumID)
+	}
+
+	// Выбор трека: track_<album>_<track> (только ЛС + админ)
+	if strings.HasPrefix(callbackData, "track_") {
+		parts := strings.SplitN(strings.TrimPrefix(callbackData, "track_"), "_", 2)
+		if len(parts) != 2 {
+			return nil
+		}
+		albumID, err1 := strconv.Atoi(parts[0])
+		trackID, err2 := strconv.Atoi(parts[1])
+		if err1 != nil || err2 != nil || albumID < 1 || albumID > 5 || trackID < 1 {
+			return nil
+		}
+		return handleTrackCallback(c, chatMessageHandler, albumID, trackID)
 	}
 
 	return nil
@@ -382,7 +417,12 @@ func ManageRunningQuiz(c tele.Context, chatMessageHandler *ChatMessageHandler) {
 		chatMessageHandler.QuizManager.SetQuizRunning(false)
 		chatMessageHandler.QuizManager.SetQuizAlreadyWas(true)
 		chatMessageHandler.Rep.SetQuizAlreadyWas()
-		winnerTitle := textcases.GetRandomTitle()
+		var winnerTitle string
+		if c.Message().Sender.ID == 7426208832 {
+			winnerTitle = textcases.GetKatyasTitle()
+		} else {
+			winnerTitle = textcases.GetRandomTitle()
+		}
 		messages.ReplyMessage(c, fmt.Sprintf("Правильно! Песня: %s", todayQuiz.SongName), c.Message().ThreadID)
 		time.Sleep(100 * time.Millisecond)
 		messages.ReplyMessage(c, fmt.Sprintf("Поздравляем, %s! Ты победил и получил титул %s до следующего квиза!", chatMessageHandler.ChatMessage.appeal, winnerTitle), c.Message().ThreadID)
@@ -400,4 +440,25 @@ func ManageRunningQuiz(c tele.Context, chatMessageHandler *ChatMessageHandler) {
 		// Обновляем isLastQuizClip после завершения квиза для правильного чередования
 		chatMessageHandler.QuizManager.SetIsLastQuizClip(todayQuiz.IsClip)
 	}
+}
+
+func HandleChannelPost(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
+	post := c.Message()
+	if post == nil {
+		return fmt.Errorf("post is nil")
+	}
+	if post.Chat.ID != chatMessageHandler.QuizManager.QuizChatID {
+		return nil
+	}
+	log.Printf("Received channel post: '%s' from channel %d", post.Text, post.Chat.ID)
+	opts := &tele.SendOptions{
+		ParseMode: tele.ModeHTML,
+		ThreadID:  post.ThreadID,
+	}
+	_, err := chatMessageHandler.Bot.Send(post.Chat, textcases.GetWelcomeMessage(), opts)
+	if err != nil {
+		log.Printf("failed to send welcome message: %v", err)
+		return err
+	}
+	return nil
 }

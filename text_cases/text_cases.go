@@ -10,12 +10,7 @@ import (
 var QuizAnnouncement = "Интерактив! Угадай песню по цитате! Кто первый даст правильный ответ, получит приз!"
 var QuizClipAnnouncement = "Интерактив! Угадай песню по кадру из клипа! Кто первый даст правильный ответ, получит приз!"
 
-func GetWarnCase(username string, lenaFlag bool) string {
-
-	if lenaFlag {
-		return "За Лену и двор предупреждаю в упор"
-	}
-
+func GetWarnCase(username string) string {
 	var warnCases = []string{
 		fmt.Sprintf("Товарищ %s, теперь вы предупреждены. Постарайтесь не предупреждаться впредь", username),
 		fmt.Sprintf("%s, вас остановила полиция предупреждений. Сегодня без штрафа, впредь будьте внимательнее", username),
@@ -92,6 +87,7 @@ func GetWarnCase(username string, lenaFlag bool) string {
 		fmt.Sprintf("У %s только два союзника — предупреждение и извинение!", username),
 		"Детка, ты выполнила задание на 5 с плюсом!\nТы меня зажгла. Появилось очень сильное и реальное желание дать тебе предупреждение.",
 		fmt.Sprintf("%s и Заболотный получают по предупреждению. Кстати, а кто такой Заболотный?", username),
+		"Не учатся ничему некоторые и учиться не хотят",
 	}
 
 	return warnCases[rand.Intn(len(warnCases))]
@@ -108,20 +104,23 @@ func GetInfo() string {
 Поддержать автора: <a href="%s">Донат</a>
 Бустануть группу: <a href="%s">Boost</a>
 
-Ближайший концерт будет в мае — Санкт-Петербург. Следите за новостями!
+Ближайший концерт — Санкт-Петербург, 13 мая, клуб JAGGER. <b>Вход свободный!</b>
+Концерт в Москве — 19 сентября, клуб Live Stars. <b><a href="%s">Купить билет</a></b>
 
 Правила чатика:
 - не флудить
 - политику обсуждать без агрессии
 - разврат заграничный 18+ не сеять
+- капсом чрезмерно не злоупотреблять
 
 Можешь глянуть свои предупреждения по команде "Преды"
 Если в чатике дичь, кто-то нарушает правила или спамит, можно вызвать админов командой "Админ" (вызов админов без веской причины карается банхаммером)
 В личных сообщениях со мной (КПСС ботом) можно указать дату рождения, чтобы я мог поздравить тебя в этом чатике с днем рождения, когда придет время.
+Ещё там можно бесплатно послушать и скачать любой трек!
 Со временем там появится ещё много классных функций, так что следи за обновлениями!
 
 Наслаждайся общением с нежитью!
-`, LinksData.YandexLink, LinksData.YoutubeLink, LinksData.VkLink, LinksData.DonateLink, LinksData.BoostLink)
+`, LinksData.YandexLink, LinksData.YoutubeLink, LinksData.VkLink, LinksData.DonateLink, LinksData.BoostLink, LinksData.ConcertLink)
 }
 
 var SongQuotes = map[string]string{
@@ -300,6 +299,10 @@ func GetRandomTitle() string {
 	return titles[rand.Intn(len(titles))]
 }
 
+func GetKatyasTitle() string {
+	return "крошка панкушка"
+}
+
 func GetAdminsCommand(user string, admins []string) string {
 	text := fmt.Sprintf("%s вызывает админов. В чатике дичь\n", user)
 
@@ -311,26 +314,26 @@ func GetAdminsCommand(user string, admins []string) string {
 
 func GetAd(previousTheme int, r *rand.Rand) (imagePath string, caption string, currentTheme int) {
 	const (
-		admins = 6
-		donate = 5
-		music  = 3
-		// concert = 1
+		admins  = 8
+		donate  = 5
+		music   = 3
+		concert = 1
 	)
 
 	LinksData := environment.GetDataEnvironment()
 
 	var captions = map[string]string{
-		"admins": "Товарищ! Веди себя в чате хорошо и уважительно относись к другим!\nПомни, что в случае несанкционированной рекламы или неприемлимого поведения несознательных элементов, ты всегда можешь позвать компетентные органы командой \"Админ\".",
-		"donate": fmt.Sprintf("Товарищ! Если ты хочешь поддержать артиста, ты всегда можешь помочь выходу новых песен и музыкальных клипов своим рублем!\n<a href=\"%s\">Донат</a>", LinksData.DonateLink),
-		"music":  fmt.Sprintf("Товарищ! Не забывай, что ежедневные прослушивания песен и просмотр клипов укрепляют здоровье и приносят радость! Обязательно попробуй послушать песни, которые ещё не слышал!\n<a href=\"%s\">Слушать песни</a>\n<a href=\"%s\">Смотреть клипы</a>", LinksData.YandexLink, LinksData.YoutubeLink),
-		// "concert": fmt.Sprintf("Товарищ! Концерт в Москве уже сегодня! Успей купить билет! Последний шанс!\n<a href=\"%s\">Купить билет</a>", LinksData.ConcertLink),
+		"admins":  "Товарищ! Веди себя в чате хорошо и уважительно относись к другим!\nПомни, что в случае несанкционированной рекламы или неприемлимого поведения несознательных элементов, ты всегда можешь позвать компетентные органы командой \"Админ\".",
+		"donate":  fmt.Sprintf("Товарищ! Если ты хочешь поддержать артиста, ты всегда можешь помочь выходу новых песен и музыкальных клипов своим рублем!\n<b><a href=\"%s\">Донат</a></b>", LinksData.DonateLink),
+		"music":   fmt.Sprintf("Товарищ! Не забывай, что ежедневные прослушивания песен и просмотр клипов укрепляют здоровье и приносят радость! Обязательно попробуй послушать песни, которые ещё не слышал!\n<b><a href=\"%s\">Слушать песни</a></b>\n<b><a href=\"%s\">Смотреть клипы</a></b>", LinksData.YandexLink, LinksData.YoutubeLink),
+		"concert": fmt.Sprintf("Товарищ! Следующий концерт — Санкт-Петербург, 13 мая, клуб JAGGER, вход свободный!\n\nКонцерт в Москве — 19 сентября, клуб Live Stars!\n<b><a href=\"%s\">Купить билет</a></b>", LinksData.ConcertLink),
 	}
 
 	var imagePaths = map[string]string{
-		"admins": "images/admins%d.jpg",
-		"donate": "images/donate%d.jpg",
-		"music":  "images/music%d.jpg",
-		// "concert": "images/concert%d.jpg",
+		"admins":  "images/admins%d.jpg",
+		"donate":  "images/donate%d.jpg",
+		"music":   "images/music%d.jpg",
+		"concert": "images/concert%d.jpg",
 	}
 
 	var theme string
@@ -343,15 +346,15 @@ func GetAd(previousTheme int, r *rand.Rand) (imagePath string, caption string, c
 		theme = "donate"
 	case 3:
 		theme = "music"
-	// case 4:
-	// 	theme = "concert"
+	case 4:
+		theme = "concert"
 	default:
 		log.Printf("Неожиданная тема! %d", previousTheme)
 		theme = "admins"
 	}
 
 	currentTheme = previousTheme + 1
-	if currentTheme > 3 {
+	if currentTheme > 4 {
 		currentTheme = 1
 	}
 
@@ -362,8 +365,8 @@ func GetAd(previousTheme int, r *rand.Rand) (imagePath string, caption string, c
 		randomizer = r.Intn(donate) + 1
 	case "music":
 		randomizer = r.Intn(music) + 1
-	// case "concert":
-	// 	randomizer = r.Intn(concert) + 1
+	case "concert":
+		randomizer = r.Intn(concert) + 1
 	default:
 		log.Printf("Неожиданная тема! %s", theme)
 		randomizer = 1
@@ -421,4 +424,22 @@ func GetUserJoinedMessage(appeal string) string {
 	return fmt.Sprintf(`Добро пожаловать, %s! Ты присоединился к чатику братства нежити.
 Сначала нажми на кнопку "Я не бот!", затем можешь написать команду "Инфа", чтобы узнать, как тут все устроено
 Нажать на кнопку надо обязательно, если не сделаешь этого, через пять минут тебя автоматически кикнет!`, appeal)
+}
+
+func GetCondemnMessage(appeal string) string {
+	return fmt.Sprintf("Это что за безобразие?! Такого ни один товарищ в здравом уме себе не позволит! Всем чатом осуждаем %s!", appeal)
+}
+
+func GetWelcomeMessage() string {
+	return `<b>Добро пожаловать!</b>
+
+Вот несколько несложных правил, чтобы общение было приятным для всех:
+- не флудить
+- политику обсуждать без агрессии
+- разврат заграничный 18+ не сеять
+- капсом чрезмерно не злоупотреблять
+
+Не беспокойся, если вдруг тебя предупредят, ведь предупрежден — значит предупрежден.
+
+Вступай в чатик и наслаждайся общением с нежитью!`
 }

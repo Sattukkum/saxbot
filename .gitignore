@@ -38,3 +38,6 @@ redis.local.conf
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+images/*
+music/*

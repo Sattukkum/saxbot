@@ -11,7 +11,7 @@ import (
 	tele "gopkg.in/telebot.v4"
 )
 
-func ManageCongratulations(bot *tele.Bot, quizChatID int64, rep *database.PostgresRepository, m *QuizManager) {
+func ManageCongratulations(bot *tele.Bot, rep *database.PostgresRepository, m *QuizManager) {
 	for {
 		now := time.Now().In(MoscowTZ)
 		todayTenAm := time.Date(now.Year(), now.Month(), now.Day(), 10, 0, 0, 0, MoscowTZ)
@@ -44,7 +44,7 @@ func ManageCongratulations(bot *tele.Bot, quizChatID int64, rep *database.Postgr
 					message += fmt.Sprintf("🎉 <b>@%s</b> 🎉\n", user.Username)
 				}
 			}
-			r := rand.Intn(3) + 1
+			r := rand.Intn(4) + 1
 			imagePath := fmt.Sprintf("images/birthday/birthday%d.jpg", r)
 			photo := &tele.Photo{
 				File:    tele.FromDisk(imagePath),
@@ -54,12 +54,12 @@ func ManageCongratulations(bot *tele.Bot, quizChatID int64, rep *database.Postgr
 				ParseMode: tele.ModeHTML,
 				ThreadID:  0,
 			}
-			if _, err := bot.Send(tele.ChatID(quizChatID), photo, opts); err != nil {
+			if _, err := bot.Send(tele.ChatID(m.QuizChatID), photo, opts); err != nil {
 				log.Printf("failed to send birthday congratulations: %v", err)
 				continue
 			}
 			time.Sleep(3 * time.Second)
-			bot.Send(tele.ChatID(quizChatID), "Товарищ! Если хочешь, чтобы Ник и тебя поздравил с днем рождения, напиши мне (КПСС боту) в личные сообщения", opts)
+			bot.Send(tele.ChatID(m.QuizChatID), "Товарищ! Если хочешь, чтобы Ник и тебя поздравил с днем рождения, напиши мне (КПСС боту) в личные сообщения", opts)
 		}
 		time.Sleep(24 * time.Hour)
 	}

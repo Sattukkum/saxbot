@@ -28,7 +28,8 @@ func InitPostgreSQL(host, user, password, dbname string, port int, sslmode strin
 	var db *gorm.DB
 	var err error
 	db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger:                                   logger.Default.LogMode(logger.Info),
+		DisableForeignKeyConstraintWhenMigrating: true, // не создавать FK при миграции — в quizzes могут быть winner_id, которых нет в users (0 или удалённые)
 	})
 	if err != nil {
 		return db, fmt.Errorf("failed to connect to PostgreSQL: %w", err)
@@ -64,14 +65,29 @@ func ClosePostgreSQL(db *gorm.DB) error {
 func AutoMigrate(db *gorm.DB) error {
 	log.Println("Starting database migration...")
 
+	// Удаляем FK на winner_id, если есть — в quizzes могут быть winner_id=0 или удалённые пользователи, из-за чего миграция падает
+	if err := db.Exec("ALTER TABLE quizzes DROP CONSTRAINT IF EXISTS fk_quizzes_winner").Error; err != nil {
+		return fmt.Errorf("failed to drop quizzes winner FK (if any): %w", err)
+	}
+
 	err := db.AutoMigrate(
 		&User{},
 		&Channel{},
 		&Quiz{},
 		&Admin{},
+		&Audio{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to migrate database: %w", err)
+	}
+
+	// GORM AutoMigrate в существующей БД иногда не создаёт новые таблицы — создаём audios явно
+	if !db.Migrator().HasTable(&Audio{}) {
+		log.Println("Creating audios table explicitly (was missing)...")
+		if err := db.Migrator().CreateTable(&Audio{}); err != nil {
+			return fmt.Errorf("failed to create audios table: %w", err)
+		}
+		log.Println("audios table created")
 	}
 
 	log.Println("Database migration completed successfully")

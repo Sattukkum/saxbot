@@ -9,6 +9,8 @@ import (
 	"saxbot/database"
 	"saxbot/environment"
 	"saxbot/handlers"
+	"strconv"
+	"strings"
 
 	"time"
 
@@ -52,7 +54,7 @@ func main() {
 
 		err = database.AutoMigrate(db)
 		if err != nil {
-			log.Printf("Предупреждение: не удалось выполнить миграцию PostgreSQL: %v", err)
+			log.Fatalf("Миграция PostgreSQL не выполнена (таблицы users, channels, quizzes, admins, audios должны существовать): %v", err)
 		}
 	}
 
@@ -91,10 +93,13 @@ func main() {
 
 	// Управление объявлениями
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	go activities.ManageAds(bot, quizChatID, r, quizManager)
+	go activities.ManageAds(bot, r, quizManager)
 
 	// Управление поздравлениями
-	go activities.ManageCongratulations(bot, quizChatID, rep, quizManager)
+	go activities.ManageCongratulations(bot, rep, quizManager)
+
+	// Управление "треком дня"
+	go activities.ManageTrackOfTheDay(bot, quizManager, rep)
 
 	chat := &tele.Chat{ID: quizChatID}
 
@@ -133,6 +138,48 @@ func main() {
 	// Обработка колбэков от инлайн-меню
 	bot.Handle(tele.OnCallback, func(c tele.Context) error {
 		return handlers.HandleCallback(c, &chatMessageHandler)
+	})
+
+	bot.Handle(tele.OnAudio, func(c tele.Context) error {
+		if c.Sender().ID != 979772599 {
+			return nil
+		}
+		audio := c.Message().Audio
+		text := c.Message().Caption
+		if text == "" {
+			return c.Reply("Текст не найден")
+		}
+		parts := strings.Split(text, "\n")
+		if len(parts) != 4 {
+			return c.Reply("Неверный формат текста")
+		}
+		albumID, err := strconv.Atoi(parts[0])
+		if err != nil {
+			return c.Reply(fmt.Sprintf("Неверный формат альбома: %v", err))
+		}
+		trackNumber, err := strconv.Atoi(parts[1])
+		if err != nil {
+			return c.Reply(fmt.Sprintf("Неверный формат трека: %v", err))
+		}
+		name := parts[2]
+		description := parts[3]
+		audioData := &database.Audio{
+			AlbumID:     albumID,
+			TrackNumber: trackNumber,
+			Name:        name,
+			Description: description,
+			FileID:      audio.File.FileID,
+			UniqueID:    audio.File.UniqueID,
+		}
+		err = rep.SaveAudio(audioData)
+		if err != nil {
+			return c.Reply(fmt.Sprintf("Ошибка при сохранении трека: %v", err))
+		}
+		return c.Reply("Трек сохранен")
+	})
+
+	bot.Handle(tele.OnChannelPost, func(c tele.Context) error {
+		return handlers.HandleChannelPost(c, &chatMessageHandler)
 	})
 
 	bot.Start()
