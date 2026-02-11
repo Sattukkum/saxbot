@@ -9,7 +9,7 @@ import (
 	tele "gopkg.in/telebot.v4"
 )
 
-func ManageAds(bot *tele.Bot, r *rand.Rand, m *QuizManager) {
+func ManageAds(bot *tele.Bot, r *rand.Rand, m *QuizManager, postGate chan struct{}, postDone chan struct{}) {
 	moscowTZ := time.FixedZone("Moscow", 3*60*60)
 	var previousTheme int = 1
 	var currentTheme int
@@ -35,10 +35,12 @@ func ManageAds(bot *tele.Bot, r *rand.Rand, m *QuizManager) {
 				ParseMode: tele.ModeHTML,
 				ThreadID:  0,
 			}
+			<-postGate
 			_, err := bot.Send(tele.ChatID(m.QuizChatID), photo, opts)
 			if err != nil {
 				log.Printf("не получилось отправить объявление в чат! %v", err)
 			}
+			postDone <- struct{}{}
 		} else {
 			log.Printf("Текущее время вне диапазона объявлений, пропускаем... %s", now.Format("15:04"))
 		}

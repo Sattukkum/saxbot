@@ -11,7 +11,7 @@ import (
 	tele "gopkg.in/telebot.v4"
 )
 
-func ManageTrackOfTheDay(bot *tele.Bot, m *QuizManager, rep *database.PostgresRepository) {
+func ManageTrackOfTheDay(bot *tele.Bot, m *QuizManager, rep *database.PostgresRepository, postGate chan struct{}, postDone chan struct{}) {
 	const (
 		singles      = 5
 		ussr_mixtape = 8
@@ -73,10 +73,13 @@ func ManageTrackOfTheDay(bot *tele.Bot, m *QuizManager, rep *database.PostgresRe
 			ParseMode: tele.ModeHTML,
 			ThreadID:  0,
 		}
+		<-postGate
 		if _, err := bot.Send(tele.ChatID(m.QuizChatID), audio, opts); err != nil {
 			log.Printf("failed to send track of the day: %v", err)
+			postDone <- struct{}{}
 			continue
 		}
+		postDone <- struct{}{}
 		album += 1
 		if album > 5 {
 			album = 1

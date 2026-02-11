@@ -11,7 +11,7 @@ import (
 	tele "gopkg.in/telebot.v4"
 )
 
-func ManageCongratulations(bot *tele.Bot, rep *database.PostgresRepository, m *QuizManager) {
+func ManageCongratulations(bot *tele.Bot, rep *database.PostgresRepository, m *QuizManager, postGate chan struct{}, postDone chan struct{}) {
 	for {
 		now := time.Now().In(MoscowTZ)
 		todayTenAm := time.Date(now.Year(), now.Month(), now.Day(), 10, 0, 0, 0, MoscowTZ)
@@ -54,10 +54,13 @@ func ManageCongratulations(bot *tele.Bot, rep *database.PostgresRepository, m *Q
 				ParseMode: tele.ModeHTML,
 				ThreadID:  0,
 			}
+			<-postGate
 			if _, err := bot.Send(tele.ChatID(m.QuizChatID), photo, opts); err != nil {
 				log.Printf("failed to send birthday congratulations: %v", err)
+				postDone <- struct{}{}
 				continue
 			}
+			postDone <- struct{}{}
 			time.Sleep(3 * time.Second)
 			bot.Send(tele.ChatID(m.QuizChatID), "Товарищ! Если хочешь, чтобы Ник и тебя поздравил с днем рождения, напиши мне (КПСС боту) в личные сообщения", opts)
 		}

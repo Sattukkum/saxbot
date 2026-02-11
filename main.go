@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"math/rand"
@@ -18,6 +19,8 @@ import (
 	tele "gopkg.in/telebot.v4"
 	"gorm.io/gorm"
 )
+
+var PostAllowed = true
 
 func main() {
 	godotenv.Load()
@@ -86,20 +89,29 @@ func main() {
 		IsLastQuizClip: false,
 		QuizChatID:     quizChatID,
 	}
-	go activities.ManageQuiz(rep, bot, quizManager)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	postGate := make(chan struct{}, 1)
+	postGate <- struct{}{} // первый пост сразу
+	postDone := make(chan struct{})
+
+	go StartPostCooldown(ctx, postGate, postDone, 20*time.Minute)
+
+	go activities.ManageQuiz(rep, bot, quizManager, postGate, postDone)
 
 	// Даем секунду менеджеру квизов, чтоб определить при перезапуске бота, идет квиз или нет
 	time.Sleep(time.Second)
 
 	// Управление объявлениями
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	go activities.ManageAds(bot, r, quizManager)
+	go activities.ManageAds(bot, r, quizManager, postGate, postDone)
 
 	// Управление поздравлениями
-	go activities.ManageCongratulations(bot, rep, quizManager)
+	go activities.ManageCongratulations(bot, rep, quizManager, postGate, postDone)
 
 	// Управление "треком дня"
-	go activities.ManageTrackOfTheDay(bot, quizManager, rep)
+	go activities.ManageTrackOfTheDay(bot, quizManager, rep, postGate, postDone)
 
 	chat := &tele.Chat{ID: quizChatID}
 
@@ -183,4 +195,28 @@ func main() {
 	})
 
 	bot.Start()
+}
+
+func StartPostCooldown(
+	ctx context.Context,
+	gate chan struct{},
+	postDone chan struct{},
+	cooldown time.Duration,
+) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+
+		case <-postDone:
+			// пост сделан → ждём cooldown и снова выдаём токен
+			go func() {
+				timer := time.NewTimer(cooldown)
+				defer timer.Stop()
+
+				<-timer.C
+				gate <- struct{}{}
+			}()
+		}
+	}
 }

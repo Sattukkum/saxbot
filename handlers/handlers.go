@@ -423,7 +423,26 @@ func ManageRunningQuiz(c tele.Context, chatMessageHandler *ChatMessageHandler) {
 		} else {
 			winnerTitle = textcases.GetRandomTitle()
 		}
-		messages.ReplyMessage(c, fmt.Sprintf("Правильно! Песня: %s", todayQuiz.SongName), c.Message().ThreadID)
+		audio, err := chatMessageHandler.Rep.GetAudioByName(todayQuiz.SongName)
+		if err != nil {
+			messages.ReplyMessage(c, fmt.Sprintf("Правильно! Песня: %s", todayQuiz.SongName), c.Message().ThreadID)
+		} else {
+			caption := fmt.Sprintf("Правильно! Песня: %s", todayQuiz.SongName)
+			if audio.ClipURL != "" {
+				caption = fmt.Sprintf("%s\n\n<b><a href=\"%s\">Смотреть клип</a></b>", caption, audio.ClipURL)
+			}
+			audio := &tele.Audio{
+				File: tele.File{
+					FileID: audio.FileID,
+				},
+				Caption: caption,
+			}
+			opts := &tele.SendOptions{
+				ParseMode: tele.ModeHTML,
+				ThreadID:  c.Message().ThreadID,
+			}
+			c.Reply(audio, opts)
+		}
 		time.Sleep(100 * time.Millisecond)
 		messages.ReplyMessage(c, fmt.Sprintf("Поздравляем, %s! Ты победил и получил титул %s до следующего квиза!", chatMessageHandler.ChatMessage.appeal, winnerTitle), c.Message().ThreadID)
 		chatMember := &tele.ChatMember{User: c.Message().Sender, Role: tele.Member}

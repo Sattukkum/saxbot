@@ -30,3 +30,12 @@ func (p *PostgresRepository) GetAudioByAlbumIDAndTrackNumber(albumID int, trackN
 	}
 	return audio, nil
 }
+
+func (p *PostgresRepository) GetAudioByName(name string) (Audio, error) {
+	var audio Audio
+	err := p.db.Where("name = ?", name).First(&audio).Error
+	if err != nil {
+		return Audio{}, err
+	}
+	return audio, nil
+}

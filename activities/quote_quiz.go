@@ -159,7 +159,7 @@ func getClipQuiz() QuoteQuiz {
 	}
 }
 
-func ManageQuiz(rep *database.PostgresRepository, bot *tele.Bot, quizManager *QuizManager) {
+func ManageQuiz(rep *database.PostgresRepository, bot *tele.Bot, quizManager *QuizManager, postGate chan struct{}, postDone chan struct{}) {
 	moscowTZ := time.FixedZone("Moscow", 3*60*60)
 
 	var lastQuizDate time.Time
@@ -251,6 +251,7 @@ func ManageQuiz(rep *database.PostgresRepository, bot *tele.Bot, quizManager *Qu
 				log.Printf("Установлены данные квиза: ScreenPath='%s', SongName='%s'", todayQuiz.ScreenPath, todayQuiz.SongName)
 			}
 
+			<-postGate
 			_, _, _, _, _, quizChatID := quizManager.GetState()
 			admins.RemovePref(bot, &tele.Chat{ID: quizChatID}, rep)
 
@@ -277,6 +278,7 @@ func ManageQuiz(rep *database.PostgresRepository, bot *tele.Bot, quizManager *Qu
 					log.Printf("Failed to send quiz clip intro message: %v", err)
 				}
 			}
+			postDone <- struct{}{}
 		}
 
 		winner, _ := rep.GetQuizWinnerID()
