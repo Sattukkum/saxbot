@@ -41,6 +41,8 @@ func GetMainEnvironment() MainEnvironment {
 	admins := GetAdmins()
 	quizChatID := getQuizChatID()
 	adminUsernames := getAdminsUsernames()
+	mainAdminID := getMainAdminID()
+	katyaID := getKatyaID()
 
 	return MainEnvironment{
 		Token:           os.Getenv("BOT_TOKEN"),
@@ -48,6 +50,8 @@ func GetMainEnvironment() MainEnvironment {
 		Admins:          admins,
 		AdminsUsernames: adminUsernames,
 		QuizChatID:      quizChatID,
+		MainAdminID:     mainAdminID,
+		KatyaID:         katyaID,
 	}
 }
 
