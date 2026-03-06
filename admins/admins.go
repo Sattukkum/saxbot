@@ -130,97 +130,48 @@ func UnmuteUser(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, db *datab
 
 // Установить админский преф с минимальными правами
 func SetPref(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, pref string) {
-	log.Printf("SetPref: Starting for user %d (%s) with pref '%s'", user.User.ID, user.User.Username, pref)
-
-	member, err := bot.ChatMemberOf(chat, user.User)
+	_, err := bot.Raw("setChatMemberTag", map[string]any{
+		"chat_id": chat.ID,
+		"user_id": user.User.ID,
+		"tag":     pref, // 0–16 символов, без emoji
+	})
 	if err != nil {
-		log.Printf("SetPref: Error getting chat member info: %v", err)
-	} else {
-		log.Printf("SetPref: Current member role: %s, title: '%s'", member.Role, member.Title)
-		if member.Role != tele.Administrator {
-			botMember, botErr := bot.ChatMemberOf(chat, &tele.User{ID: bot.Me.ID})
-			if botErr != nil {
-				log.Printf("SetPref: Error getting bot member info: %v", botErr)
-			} else {
-				log.Printf("SetPref: Bot role: %s, can_promote_members: %v", botMember.Role, botMember.Rights.CanPromoteMembers)
-			}
-
-			log.Printf("SetPref: User is not admin, promoting...")
-			promoteParams := map[string]any{
-				"chat_id":                chat.ID,
-				"user_id":                user.User.ID,
-				"is_anonymous":           false,
-				"can_manage_chat":        false,
-				"can_delete_messages":    false,
-				"can_manage_video_chats": false,
-				"can_restrict_members":   false,
-				"can_promote_members":    false,
-				"can_change_info":        false,
-				"can_invite_users":       true, // Требуется дать одно минимальное право, чтобы ТГ считал пользователя админом
-				"can_pin_messages":       false,
-				"can_manage_topics":      false,
-			}
-
-			_, promoteErr := bot.Raw("promoteChatMember", promoteParams)
-			if promoteErr != nil {
-				log.Printf("SetPref: Error promoting user with Raw API: %v", promoteErr)
-			}
-
-			log.Printf("SetPref: Setting admin title to '%s'", pref)
-			err = bot.SetAdminTitle(chat, user.User, pref)
-			if err != nil {
-				log.Printf("SetPref: Error setting admin title: %v", err)
-			} else {
-				log.Printf("SetPref: Admin title set successfully")
-			}
-		}
+		log.Printf("failed to set chat member tag for user %d: %v", user.User.ID, err)
 	}
+	log.Printf("SetPref: Successfully set chat member tag for user %d: %s", user.User.ID, pref)
 }
 
 // Удалить преф у пользователя
-// На мгновение рестриктит пользователя. Это позволяет лишить его статуса админа
 func RemovePref(bot *tele.Bot, chat *tele.Chat, db *database.PostgresRepository) error {
 	lastQuiz, err := db.GetLastCompletedQuiz()
 	if err != nil {
 		return fmt.Errorf("failed to get last quiz: %w", err)
 	}
 	winnerID := lastQuiz.WinnerID
-	user := &tele.User{ID: winnerID}
-	member, err := bot.ChatMemberOf(chat, user)
+	_, err = bot.Raw("setChatMemberTag", map[string]any{
+		"chat_id": chat.ID,
+		"user_id": winnerID,
+		"tag":     "", // удаляет тег
+	})
 	if err != nil {
-		return fmt.Errorf("failed to get chat member from user %d: %w", winnerID, err)
+		log.Printf("failed to remove chat member tag for user %d: %v", winnerID, err)
+		return fmt.Errorf("failed to remove chat member tag for user %d: %w", winnerID, err)
 	}
-	if member.Role != tele.Administrator {
-		log.Printf("RemovePref: User %d is not admin already", winnerID)
-		return nil
-	}
-	member.Rights = tele.Rights{
-		CanSendMessages:  true,
-		CanSendMedia:     true,
-		CanSendAudios:    true,
-		CanSendVideos:    true,
-		CanSendPhotos:    true,
-		CanSendDocuments: false,
-		CanSendOther:     false,
-	}
-	err = bot.Restrict(chat, member)
+	log.Printf("RemovePref: Successfully removed chat member tag for user %d", winnerID)
+	return nil
+}
+
+func RemovePrefTest(bot *tele.Bot, chat *tele.Chat, user *tele.ChatMember, db *database.PostgresRepository) error {
+	_, err := bot.Raw("setChatMemberTag", map[string]any{
+		"chat_id": chat.ID,
+		"user_id": user.User.ID,
+		"tag":     "", // удаляет тег
+	})
 	if err != nil {
-		return fmt.Errorf("failed to temporary restrict user %d: %w", winnerID, err)
+		log.Printf("failed to remove chat member tag for user %d: %v", user.User.ID, err)
+		return fmt.Errorf("failed to remove chat member tag for user %d: %w", user.User.ID, err)
 	}
-	time.Sleep(500 * time.Millisecond)
-	member.Rights = tele.Rights{
-		CanSendMessages:  true,
-		CanSendMedia:     true,
-		CanSendAudios:    true,
-		CanSendVideos:    true,
-		CanSendPhotos:    true,
-		CanSendDocuments: true,
-		CanSendOther:     true,
-	}
-	err = bot.Restrict(chat, member)
-	if err != nil {
-		return fmt.Errorf("failed to unrestrict user %d: %w", winnerID, err)
-	}
+	log.Printf("RemovePref: Successfully removed chat member tag for user %d", user.User.ID)
 	return nil
 }
 

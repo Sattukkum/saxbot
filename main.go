@@ -131,6 +131,7 @@ func main() {
 		QuizManager:     quizManager,
 		Rep:             rep,
 		Bot:             bot,
+		KatyaID:         mainEnv.KatyaID,
 		UserStates:      make(map[int64]string),
 	}
 
@@ -152,8 +153,9 @@ func main() {
 		return handlers.HandleCallback(c, &chatMessageHandler)
 	})
 
+	// Сохранение трека в базу (только для главного админа)
 	bot.Handle(tele.OnAudio, func(c tele.Context) error {
-		if c.Sender().ID != 979772599 {
+		if c.Sender().ID != mainEnv.MainAdminID {
 			return nil
 		}
 		audio := c.Message().Audio

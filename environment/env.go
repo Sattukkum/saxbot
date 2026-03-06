@@ -11,6 +11,8 @@ type MainEnvironment struct {
 	Token           string
 	AllowedChats    []int64
 	Admins          []int64
+	MainAdminID     int64
+	KatyaID         int64
 	AdminsUsernames []string
 	QuizChatID      int64
 }
@@ -160,6 +162,38 @@ func getQuizChatID() int64 {
 		log.Printf("TARGET_CHAT environment variable is empty")
 		return 0
 	}
-	quizChatIDInt, _ := strconv.ParseInt(strings.TrimSpace(quizChatID), 10, 64)
+	quizChatIDInt, err := strconv.ParseInt(strings.TrimSpace(quizChatID), 10, 64)
+	if err != nil {
+		log.Printf("Ошибка парсинга TARGET_CHAT: %v", err)
+		return 0
+	}
 	return quizChatIDInt
+}
+
+func getMainAdminID() int64 {
+	mainAdminID := os.Getenv("MAIN_ADMIN_ID")
+	if mainAdminID == "" {
+		log.Printf("MAIN_ADMIN_ID environment variable is empty")
+		return 0
+	}
+	mainAdminIDInt, err := strconv.ParseInt(strings.TrimSpace(mainAdminID), 10, 64)
+	if err != nil {
+		log.Printf("Ошибка парсинга MAIN_ADMIN_ID: %v", err)
+		return 0
+	}
+	return mainAdminIDInt
+}
+
+func getKatyaID() int64 {
+	katyaID := os.Getenv("KATYA_ID")
+	if katyaID == "" {
+		log.Printf("KATYA_ID environment variable is empty")
+		return 0
+	}
+	katyaIDInt, err := strconv.ParseInt(strings.TrimSpace(katyaID), 10, 64)
+	if err != nil {
+		log.Printf("Ошибка парсинга KATYA_ID: %v", err)
+		return 0
+	}
+	return katyaIDInt
 }

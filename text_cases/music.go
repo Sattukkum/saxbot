@@ -92,6 +92,7 @@ var singlesTracklist = map[int]string{
 	3: "Белла, Чао!",
 	4: "Ночь перед Рождеством",
 	5: "Дайте мне Бензопилу",
+	6: "Пацанский хит для топ-чартов",
 }
 
 func GetTrack(album int, track int, rep *database.PostgresRepository) database.Audio {

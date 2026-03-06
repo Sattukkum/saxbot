@@ -44,7 +44,7 @@ func ManageAds(bot *tele.Bot, r *rand.Rand, m *QuizManager, postGate chan struct
 		} else {
 			log.Printf("Текущее время вне диапазона объявлений, пропускаем... %s", now.Format("15:04"))
 		}
-		time.Sleep(3 * time.Hour)
+		time.Sleep(2 * time.Hour)
 		previousTheme = currentTheme
 	}
 }

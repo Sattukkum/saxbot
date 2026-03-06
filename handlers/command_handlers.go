@@ -8,6 +8,7 @@ import (
 	"saxbot/database"
 	"saxbot/messages"
 	textcases "saxbot/text_cases"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -387,6 +388,7 @@ func handleInfo(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
 		return fmt.Errorf("chat message is nil")
 	}
 	text := textcases.GetInfo()
+	log.Println(text)
 	return messages.ReplyFormattedHTML(c, text, chatMsg.ThreadID())
 }
 
@@ -516,6 +518,9 @@ func handleWarnAll(c tele.Context, chatMessageHandler *ChatMessageHandler) error
 
 // Обработка команды показать информацию по сегодняшнему квизу (для админов)
 func handleShowQuizInfo(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
+	if !slices.Contains(chatMessageHandler.AdminsList, c.Message().Sender.ID) {
+		return nil
+	}
 	time := chatMessageHandler.QuizManager.TodayQuiz.QuizTime.In(database.MoscowTZ).Format("15:04")
 	text := fmt.Sprintf("Информация о сегодняшнем квизе:\nВремя проведения: %s\n", time)
 	if chatMessageHandler.QuizManager.QuizAlreadyWas {

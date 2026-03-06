@@ -418,7 +418,7 @@ func ManageRunningQuiz(c tele.Context, chatMessageHandler *ChatMessageHandler) {
 		chatMessageHandler.QuizManager.SetQuizAlreadyWas(true)
 		chatMessageHandler.Rep.SetQuizAlreadyWas()
 		var winnerTitle string
-		if c.Message().Sender.ID == 7426208832 {
+		if c.Message().Sender.ID == chatMessageHandler.KatyaID {
 			winnerTitle = textcases.GetKatyasTitle()
 		} else {
 			winnerTitle = textcases.GetRandomTitle()
@@ -443,7 +443,7 @@ func ManageRunningQuiz(c tele.Context, chatMessageHandler *ChatMessageHandler) {
 			}
 			c.Reply(audio, opts)
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(30 * time.Millisecond)
 		messages.ReplyMessage(c, fmt.Sprintf("Поздравляем, %s! Ты победил и получил титул %s до следующего квиза!", chatMessageHandler.ChatMessage.appeal, winnerTitle), c.Message().ThreadID)
 		chatMember := &tele.ChatMember{User: c.Message().Sender, Role: tele.Member}
 		admins.SetPref(chatMessageHandler.Bot, c.Chat(), chatMember, winnerTitle)

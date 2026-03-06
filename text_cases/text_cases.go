@@ -90,6 +90,7 @@ func GetWarnCase(username string) string {
 		"Не учатся ничему некоторые и учиться не хотят",
 		"Один лишь дедушка Ленин хороший был вождь. А все другие остальные получили предупреждение",
 		fmt.Sprintf("Если %s математик, то он должен знать счет древних шизов. Ноль, целковый, чекушка, порнушка, пердушка, засерушка, жучок, мудачок, хуй на воротничок, дурачок, томление, в жопу мнение, предупреждение. Так считали наши шизопредки!", username),
+		"Тысячу и одно предупреждение этому господину!",
 	}
 
 	return warnCases[rand.Intn(len(warnCases))]
@@ -107,6 +108,7 @@ func GetInfo() string {
 <a href="%s">Бустануть канал</a></b>
 
 Ближайший концерт — Санкт-Петербург, 13 мая, клуб JAGGER. <b>Вход свободный!</b>
+Великий Новгород — Фэнтези Фест (конец июля). <b><a href="%s">Купить билет</a></b>
 Концерт в Москве — 19 сентября, клуб Live Stars. <b><a href="%s">Купить билет</a></b>
 
 Правила чатика:
@@ -114,6 +116,7 @@ func GetInfo() string {
 - политику обсуждать без агрессии
 - разврат заграничный 18+ не сеять
 - капсом чрезмерно не злоупотреблять
+- админам в личку не долбить
 
 Можешь глянуть свои предупреждения по команде "Преды"
 Если в чатике дичь, кто-то нарушает правила или спамит, можно вызвать админов командой "Админ" (вызов админов без веской причины карается банхаммером)
@@ -122,7 +125,7 @@ func GetInfo() string {
 Со временем там появится ещё много классных функций, так что следи за обновлениями!
 
 Наслаждайся общением с нежитью!
-`, LinksData.YandexLink, LinksData.YoutubeLink, LinksData.VkLink, LinksData.DonateLink, LinksData.BoostLink, LinksData.ConcertLink)
+`, LinksData.YandexLink, LinksData.YoutubeLink, LinksData.VkLink, LinksData.DonateLink, LinksData.BoostLink, "https://fantasy-fest.ru/", LinksData.ConcertLink)
 }
 
 var SongQuotes = map[string]string{
@@ -203,8 +206,8 @@ var SongQuotes = map[string]string{
 	"Так заберём своё! у всех коронованных тиранов,\nЧто прозябало неустанно в пасти дракона капитала":                            "Красный Кулак",
 
 	// Zavod
-	"Дай, покажи старых скрежет машин\nИ надежд небольших, что за годы с треском ушли": "Zavod",
-	"До седьмого пота, где застелет небо смог\nНас зовёт работать, на рассвете наш...": "Zavod",
+	"Дай, покажи старых скрежет машин\nИ надежд небольших, что за годы с треском ушли": "ZAVOD",
+	"До седьмого пота, где застелет небо смог\nНас зовёт работать, на рассвете наш...": "ZAVOD",
 
 	// Домой
 	"Хрустели на зубах сухие корешки\nО бороду ломались стальные гребешки":                                        "Домой",
@@ -316,7 +319,8 @@ func GetAdminsCommand(user string, admins []string) string {
 
 func GetAd(previousTheme int, r *rand.Rand) (imagePath string, caption string, currentTheme int) {
 	const (
-		admins  = 8
+		// количество картинок на каждую тему в папке images
+		admins  = 10
 		donate  = 5
 		music   = 3
 		concert = 1
@@ -328,8 +332,15 @@ func GetAd(previousTheme int, r *rand.Rand) (imagePath string, caption string, c
 		"admins":  "Товарищ! Веди себя в чате хорошо и уважительно относись к другим!\nПомни, что в случае несанкционированной рекламы или неприемлимого поведения несознательных элементов, ты всегда можешь позвать компетентные органы командой \"Админ\".",
 		"donate":  fmt.Sprintf("Товарищ! Если ты хочешь поддержать артиста, ты всегда можешь помочь выходу новых песен и музыкальных клипов своим рублем!\n<b><a href=\"%s\">Донат</a></b>", LinksData.DonateLink),
 		"music":   fmt.Sprintf("Товарищ! Не забывай, что ежедневные прослушивания песен и просмотр клипов укрепляют здоровье и приносят радость! Обязательно попробуй послушать песни, которые ещё не слышал!\n<b><a href=\"%s\">Слушать песни</a></b>\n<b><a href=\"%s\">Смотреть клипы</a></b>", LinksData.YandexLink, LinksData.YoutubeLink),
-		"concert": fmt.Sprintf("Товарищ! Следующий концерт — Санкт-Петербург, 13 мая, клуб JAGGER, вход свободный! Совместно с <b><a href=\"%s\">Хельга Алирин</a></b>\n\nКонцерт в Москве — 19 сентября, клуб Live Stars!\n<b><a href=\"%s\">Купить билет</a></b>", "https://t.me/helgaalirin", LinksData.ConcertLink),
+		"concert": fmt.Sprintf("Товарищ! Следующий концерт — Санкт-Петербург, 13 мая, клуб JAGGER, вход свободный! Совместно с <b><a href=\"%s\">Хельга Алирин</a></b>\n\nВеликий Новгород — Фэнтези Фест (конец июля) — <b><a href=\"%s\">Купить билет</a></b>\n\nКонцерт в Москве — 19 сентября, клуб Live Stars! — <b><a href=\"%s\">Купить билет</a></b>", "https://t.me/helgaalirin", "https://fantasy-fest.ru/", LinksData.ConcertLink),
 	}
+
+	// var captions = map[string]string{
+	// 	"admins":  "Йоу, бро! Веди себя на районе ровно и уважительно относись к братве!\nЕсли NoName задвигает свою дичь или несет кринж, зови старших командой \"Админ\".",
+	// 	"donate":  fmt.Sprintf("Йоу, бро! Давай помнить, кому Ник обязан своим успехом! Сходи к нашим старшим из 52 и поблагодари за возможность!\n<b><a href=\"%s\">FRIENDLY THUG 52</a></b>\n<b><a href=\"%s\">ALBLAK 52</a></b>", "https://t.me/softestbed", "https://t.me/alblaker"),
+	// 	"music":   fmt.Sprintf("Йоу, бро! Старые треки пока ещё доступны у меня (бота), сохрани, если боишься потерять! Скоро там будет brand new музон, давай качнем район вместе!\n<b><a href=\"%s\">Слушать песни</a></b>\n<b><a href=\"%s\">Смотреть клипы</a></b>", LinksData.YandexLink, LinksData.YoutubeLink),
+	// 	"concert": fmt.Sprintf("Йоу, бро! Следующий концерт — Санкт-Петербург, 13 мая, клуб JAGGER, вход свободный! Совместно с <b><a href=\"%s\">Хельга Алирин</a></b>\n\nВеликий Новгород — Фэнтези Фест (конец июля) — <b><a href=\"%s\">Купить билет</a></b>\n\nКонцерт в Москве — 19 сентября, клуб Live Stars! — <b><a href=\"%s\">Купить билет</a></b>", "https://t.me/helgaalirin", "https://fantasy-fest.ru/", LinksData.ConcertLink),
+	// }
 
 	var imagePaths = map[string]string{
 		"admins":  "images/admins%d.jpg",
@@ -393,7 +404,7 @@ var clipScreensDirs = map[string]string{
 	"Мара":                   "mara",
 	"No Money Be Happy":      "no_money",
 	"Красный Кулак":          "red_fist",
-	"Zavod":                  "zavod",
+	"ZAVOD":                  "zavod",
 	"Rocket Man":             "rocketman",
 	"Серп и Молот":           "serp_molot",
 	"Village Boy":            "village_boy",

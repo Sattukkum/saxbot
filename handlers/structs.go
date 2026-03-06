@@ -18,6 +18,7 @@ type ChatMessageHandler struct {
 	Rep             *database.PostgresRepository
 	Bot             *tele.Bot
 	ChatMessage     *ChatMessage
+	KatyaID         int64
 	UserStates      map[int64]string // Состояния пользователей (userID -> state)
 }
 

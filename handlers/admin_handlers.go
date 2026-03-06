@@ -119,6 +119,31 @@ func handleAdminChatMessage(c tele.Context, chatMessageHandler *ChatMessageHandl
 		} else {
 			return handleNotEnoughRights(c, chatMessageHandler)
 		}
+		// Команды для тестирования:
+		// case "преф", "префикс":
+		// 	// Джуниоры и сеньоры могут использовать эту команду
+		// 	if chatMsg.AdminRole() == "senior" || chatMsg.AdminRole() == "junior" {
+		// 		member, err := chatMessageHandler.Bot.ChatMemberOf(c.Chat(), chatMsg.ReplyTo().Sender)
+		// 		if err != nil {
+		// 			return fmt.Errorf("failed to get chat member: %w", err)
+		// 		}
+		// 		admins.SetPref(chatMessageHandler.Bot, c.Chat(), member, "тестовый префикс")
+		// 		return messages.ReplyMessage(c, fmt.Sprintf("Префикс установлен для %s: %s", chatMsg.ReplyTo().Sender.Username, chatMsg.Text()), chatMsg.ThreadID())
+		// 	} else {
+		// 		return handleNotEnoughRights(c, chatMessageHandler)
+		// 	}
+		// case "убрать преф", "убрать префикс":
+		// 	// Джуниоры и сеньоры могут использовать эту команду
+		// 	if chatMsg.AdminRole() == "senior" || chatMsg.AdminRole() == "junior" {
+		// 		member, err := chatMessageHandler.Bot.ChatMemberOf(c.Chat(), chatMsg.ReplyTo().Sender)
+		// 		if err != nil {
+		// 			return fmt.Errorf("failed to get chat member: %w", err)
+		// 		}
+		// 		admins.RemovePrefTest(chatMessageHandler.Bot, c.Chat(), member, chatMessageHandler.Rep)
+		// 		return messages.ReplyMessage(c, "Префикс убран", chatMsg.ThreadID())
+		// 	} else {
+		// 		return handleNotEnoughRights(c, chatMessageHandler)
+		// 	}
 	}
 
 	// Обработка команды мута (может содержать число)
