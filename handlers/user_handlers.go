@@ -23,6 +23,8 @@ func handleUserChatMessage(c tele.Context, chatMessageHandler *ChatMessageHandle
 		return handleReport(c, chatMessageHandler)
 	case "преды", "/warns":
 		return handleWarns(c, chatMessageHandler)
+	case "гороскоп", "/horoscope":
+		return handleHoroscope(c, chatMessageHandler)
 	}
 
 	// Если квиз запущен, обрабатываем ответы на квиз

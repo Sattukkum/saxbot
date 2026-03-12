@@ -76,6 +76,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&Quiz{},
 		&Admin{},
 		&Audio{},
+		&Horoscope{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to migrate database: %w", err)

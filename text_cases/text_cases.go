@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"saxbot/database"
 	"saxbot/environment"
+	"strings"
+	"time"
 )
 
 var QuizAnnouncement = "Интерактив! Угадай песню по цитате! Кто первый даст правильный ответ, получит приз!"
@@ -409,6 +412,7 @@ var clipScreensDirs = map[string]string{
 	"Серп и Молот":           "serp_molot",
 	"Village Boy":            "village_boy",
 	"Ядерная Зима":           "zima",
+	"Пацанский хит для топ-чартов": "pacan",
 }
 
 func GetRandomClip() map[string]string {
@@ -455,4 +459,91 @@ func GetWelcomeMessage() string {
 Не беспокойся, если вдруг тебя предупредят, ведь предупрежден — значит предупрежден.
 
 Вступай в чатик и наслаждайся общением с нежитью!`
+}
+
+func GetUserHoroscope(repo *database.PostgresRepository, userID int64) string {
+	sign, err := getUserZodiac(repo, userID)
+	if err != nil {
+		return "Кажется, у тебя не указан день рождения! Укажи дату рождения в личных сообщениях со мной (КПСС ботом)"
+	}
+	horoscope, err := repo.GetHoroscope(sign)
+	if err != nil {
+		return "Внутренняя ошибка базы данных."
+	}
+	return getPrefix(sign) + horoscope
+}
+
+func getPrefix(sign string) string {
+	sign = strings.ToLower(sign)
+	switch sign {
+	case "aries":
+		return "<b>♈️Овен:</b> "
+	case "taurus":
+		return "<b>♉️Телец:</b> "
+	case "gemini":
+		return "<b>♊️Близнецы:</b> "
+	case "cancer":
+		return "<b>♋️Рак:</b> "
+	case "leo":
+		return "<b>♌️Лев:</b> "
+	case "virgo":
+		return "<b>♍️Дева:</b> "
+	case "libra":
+		return "<b>♎️Весы:</b> "
+	case "scorpio":
+		return "<b>♏️Скорпион:</b> "
+	case "sagittarius":
+		return "<b>♐️Стрелец:</b> "
+	case "capricorn":
+		return "<b>♑️Козерог:</b> "
+	case "aquarius":
+		return "<b>♒️Водолей:</b> "
+	case "pisces":
+		return "<b>♓️Рыбы:</b> "
+	default:
+		return ""
+	}
+}
+
+func getUserZodiac(repo *database.PostgresRepository, userID int64) (string, error) {
+	birthday, err := repo.GetUserBirthday(userID)
+	if err != nil {
+		return "", err
+	}
+
+	year := birthday.Year()
+	if year < 1900 {
+		return "", fmt.Errorf("invalid birthday year")
+	}
+	month := birthday.Month()
+	day := birthday.Day()
+
+	switch {
+	case (month == time.March && day >= 21) || (month == time.April && day <= 19):
+		return "Aries", nil
+	case (month == time.April && day >= 20) || (month == time.May && day <= 20):
+		return "Taurus", nil
+	case (month == time.May && day >= 21) || (month == time.June && day <= 20):
+		return "Gemini", nil
+	case (month == time.June && day >= 21) || (month == time.July && day <= 22):
+		return "Cancer", nil
+	case (month == time.July && day >= 23) || (month == time.August && day <= 22):
+		return "Leo", nil
+	case (month == time.August && day >= 23) || (month == time.September && day <= 22):
+		return "Virgo", nil
+	case (month == time.September && day >= 23) || (month == time.October && day <= 22):
+		return "Libra", nil
+	case (month == time.October && day >= 23) || (month == time.November && day <= 21):
+		return "Scorpio", nil
+	case (month == time.November && day >= 22) || (month == time.December && day <= 21):
+		return "Sagittarius", nil
+	case (month == time.December && day >= 22) || (month == time.January && day <= 19):
+		return "Capricorn", nil
+	case (month == time.January && day >= 20) || (month == time.February && day <= 18):
+		return "Aquarius", nil
+	case (month == time.February && day >= 19) || (month == time.March && day <= 20):
+		return "Pisces", nil
+	default:
+		return "", fmt.Errorf("invalid birthday date")
+	}
 }

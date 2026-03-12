@@ -604,3 +604,13 @@ func handlePromoteAdmin(c tele.Context, chatMessageHandler *ChatMessageHandler) 
 	}
 	return c.Reply(fmt.Sprintf("Успешно продвинули админа %d", id64))
 }
+
+func handleHoroscope(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
+	chatMsg := chatMessageHandler.ChatMessage
+	if chatMsg == nil {
+		return fmt.Errorf("chat message is nil")
+	}
+	userID := chatMsg.UserData().UserID
+	horoscope := textcases.GetUserHoroscope(chatMessageHandler.Rep, userID)
+	return messages.ReplyFormattedHTML(c, horoscope, chatMsg.ThreadID())
+}

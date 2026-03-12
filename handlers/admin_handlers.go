@@ -24,6 +24,8 @@ func handleAdminChatMessage(c tele.Context, chatMessageHandler *ChatMessageHandl
 		return handleReport(c, chatMessageHandler)
 	case "преды", "/warns":
 		return handleWarns(c, chatMessageHandler)
+	case "гороскоп", "/horoscope":
+		return handleHoroscope(c, chatMessageHandler)
 	}
 
 	// Победитель (не админ) может использовать только "предупреждение" и "извинись"
@@ -196,6 +198,8 @@ func handleAdminPrivateMessage(c tele.Context, chatMessageHandler *ChatMessageHa
 		return messages.ReplyMessage(c, fmt.Sprintf("Текущее состояние: %s", currentState), chatMsg.ThreadID())
 	case "/quiz", "quiz", "квиз":
 		return handleShowQuizInfo(c, chatMessageHandler)
+	case "/horoscope":
+		return handleHoroscope(c, chatMessageHandler)
 	}
 
 	if strings.HasPrefix(text, "размут") {

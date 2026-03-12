@@ -8,13 +8,14 @@ import (
 )
 
 type MainEnvironment struct {
-	Token           string
-	AllowedChats    []int64
-	Admins          []int64
-	MainAdminID     int64
-	KatyaID         int64
-	AdminsUsernames []string
-	QuizChatID      int64
+	Token               string
+	AllowedChats        []int64
+	Admins              []int64
+	MainAdminID         int64
+	KatyaID             int64
+	AdminsUsernames     []string
+	QuizChatID          int64
+	HoroscopChannelLink string
 }
 
 type PostgreSQLEnvironment struct {
@@ -43,15 +44,17 @@ func GetMainEnvironment() MainEnvironment {
 	adminUsernames := getAdminsUsernames()
 	mainAdminID := getMainAdminID()
 	katyaID := getKatyaID()
+	horoscopChannelLink := getHoroscopChannelLink()
 
 	return MainEnvironment{
-		Token:           os.Getenv("BOT_TOKEN"),
-		AllowedChats:    allowedChats,
-		Admins:          admins,
-		AdminsUsernames: adminUsernames,
-		QuizChatID:      quizChatID,
-		MainAdminID:     mainAdminID,
-		KatyaID:         katyaID,
+		Token:               os.Getenv("BOT_TOKEN"),
+		AllowedChats:        allowedChats,
+		Admins:              admins,
+		AdminsUsernames:     adminUsernames,
+		QuizChatID:          quizChatID,
+		MainAdminID:         mainAdminID,
+		KatyaID:             katyaID,
+		HoroscopChannelLink: horoscopChannelLink,
 	}
 }
 
@@ -200,4 +203,13 @@ func getKatyaID() int64 {
 		return 0
 	}
 	return katyaIDInt
+}
+
+func getHoroscopChannelLink() string {
+	horoscopChannelLink := os.Getenv("HOROSCOP_CHANNEL_LINK")
+	if horoscopChannelLink == "" {
+		log.Printf("HOROSCOP_CHANNEL_LINK environment variable is empty")
+		return ""
+	}
+	return horoscopChannelLink
 }

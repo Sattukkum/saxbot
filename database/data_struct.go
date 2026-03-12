@@ -68,6 +68,22 @@ type Audio struct {
 	ClipURL     string `gorm:"type:text" json:"clip_url"`
 }
 
+type Horoscope struct {
+	ID          int    `gorm:"primaryKey" json:"id"`
+	Aries       string `gorm:"type:text" json:"aries"`
+	Taurus      string `gorm:"type:text" json:"taurus"`
+	Gemini      string `gorm:"type:text" json:"gemini"`
+	Cancer      string `gorm:"type:text" json:"cancer"`
+	Leo         string `gorm:"type:text" json:"leo"`
+	Virgo       string `gorm:"type:text" json:"virgo"`
+	Libra       string `gorm:"type:text" json:"libra"`
+	Scorpio     string `gorm:"type:text" json:"scorpio"`
+	Sagittarius string `gorm:"type:text" json:"sagittarius"`
+	Capricorn   string `gorm:"type:text" json:"capricorn"`
+	Aquarius    string `gorm:"type:text" json:"aquarius"`
+	Pisces      string `gorm:"type:text" json:"pisces"`
+}
+
 func (User) TableName() string {
 	return "users"
 }
@@ -86,4 +102,8 @@ func (Admin) TableName() string {
 
 func (Audio) TableName() string {
 	return "audios"
+}
+
+func (Horoscope) TableName() string {
+	return "horoscopes"
 }

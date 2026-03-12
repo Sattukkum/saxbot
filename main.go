@@ -10,6 +10,7 @@ import (
 	"saxbot/database"
 	"saxbot/environment"
 	"saxbot/handlers"
+	"saxbot/parser"
 	"strconv"
 	"strings"
 
@@ -19,8 +20,6 @@ import (
 	tele "gopkg.in/telebot.v4"
 	"gorm.io/gorm"
 )
-
-var PostAllowed = true
 
 func main() {
 	godotenv.Load()
@@ -120,6 +119,16 @@ func main() {
 		for {
 			admins.UnmuteUsersByTime(bot, chat, rep)
 			time.Sleep(time.Minute)
+		}
+	}()
+
+	go func() {
+		for {
+			err := parser.ParseLatestPost(mainEnv.HoroscopChannelLink, rep)
+			if err != nil {
+				log.Printf("failed to parse latest horoscope post: %v", err)
+			}
+			time.Sleep(time.Hour)
 		}
 	}()
 
