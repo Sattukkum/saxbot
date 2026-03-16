@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"saxbot/admins"
 	"saxbot/messages"
+	textcases "saxbot/text_cases"
 	"strconv"
 	"strings"
 
@@ -171,6 +172,15 @@ func handleAdminChatMessage(c tele.Context, chatMessageHandler *ChatMessageHandl
 				return handleNotEnoughRights(c, chatMessageHandler)
 			}
 		}
+	}
+
+	normalized := strings.ReplaceAll(text, ",", " ")
+	normalized = strings.ReplaceAll(normalized, "!", " ")
+	normalized = strings.ReplaceAll(normalized, ".", " ")
+	normalized = strings.ReplaceAll(normalized, "?", " ")
+
+	if strings.Contains(normalized, "серб") || strings.Contains(normalized, "серба") || strings.Contains(normalized, "сербу") || strings.Contains(normalized, "сербом") {
+		return messages.ReplyMessage(c, textcases.GetSerbMessage(), chatMsg.ThreadID())
 	}
 
 	// Если квиз запущен, обрабатываем ответы на квиз

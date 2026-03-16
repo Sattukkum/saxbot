@@ -325,7 +325,7 @@ func GetAd(previousTheme int, r *rand.Rand) (imagePath string, caption string, c
 		// количество картинок на каждую тему в папке images
 		admins  = 10
 		donate  = 5
-		music   = 3
+		music   = 4
 		concert = 1
 	)
 
@@ -546,4 +546,8 @@ func getUserZodiac(repo *database.PostgresRepository, userID int64) (string, err
 	default:
 		return "", fmt.Errorf("invalid birthday date")
 	}
+}
+
+func GetSerbMessage() string {
+	return "Трымай пыпыску"
 }

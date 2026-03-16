@@ -3,6 +3,7 @@ module saxbot
 go 1.25.0
 
 require (
+	github.com/PuerkitoBio/goquery v1.11.0
 	github.com/joho/godotenv v1.5.1
 	gopkg.in/telebot.v4 v4.0.0-beta.5
 	gorm.io/driver/postgres v1.5.11
@@ -10,7 +11,6 @@ require (
 )
 
 require (
-	github.com/PuerkitoBio/goquery v1.11.0 // indirect
 	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect

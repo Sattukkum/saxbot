@@ -121,18 +121,27 @@ func (p *PostgresRepository) RefreshAllUsersAdminStatus() error {
 		return fmt.Errorf("failed to get users: %w", err)
 	}
 
+	adminMap, err := p.GetAllAdminsMap()
+	if err != nil {
+		return fmt.Errorf("failed to get admins: %w", err)
+	}
+
 	updatedCount := 0
 	errCount := 0
+
 	for _, user := range users {
-		err = nil
-		isAdmin := p.IsUserAdmin(&user)
-		if isAdmin && !p.IsAdmin(user.UserID) {
+
+		_, isAdminInDB := adminMap[user.UserID]
+		isAdminInConfig := p.IsUserAdmin(&user)
+
+		if isAdminInConfig && !isAdminInDB {
 			err = p.SaveAdmin(user, "junior")
 			updatedCount++
-		} else if !isAdmin && p.IsAdmin(user.UserID) {
+		} else if !isAdminInConfig && isAdminInDB {
 			err = p.RemoveAdmin(user.UserID)
 			updatedCount++
 		}
+
 		if err != nil {
 			log.Printf("failed to update admin status for user %d: %v", user.UserID, err)
 			errCount++
@@ -140,9 +149,11 @@ func (p *PostgresRepository) RefreshAllUsersAdminStatus() error {
 	}
 
 	log.Printf("Admin status refresh completed. Updated %d users out of %d total.", updatedCount, len(users))
+
 	if errCount != 0 {
 		return fmt.Errorf("got %d errors during update", errCount)
 	}
+
 	return nil
 }
 
@@ -154,6 +165,23 @@ func (p *PostgresRepository) GetAdmins() ([]Admin, error) {
 		return nil, fmt.Errorf("failed to get all admins: %w", err)
 	}
 	return admins, nil
+}
+
+// Получить мапу всех админов (для оптимизации)
+func (p *PostgresRepository) GetAllAdminsMap() (map[int64]struct{}, error) {
+	var admins []Admin
+
+	err := p.db.Find(&admins).Error
+	if err != nil {
+		return nil, err
+	}
+
+	adminMap := make(map[int64]struct{}, len(admins))
+	for _, admin := range admins {
+		adminMap[admin.ID] = struct{}{}
+	}
+
+	return adminMap, nil
 }
 
 // Сохранить админа
