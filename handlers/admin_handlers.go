@@ -29,6 +29,15 @@ func handleAdminChatMessage(c tele.Context, chatMessageHandler *ChatMessageHandl
 		return handleHoroscope(c, chatMessageHandler)
 	}
 
+	normalized := strings.ReplaceAll(text, ",", " ")
+	normalized = strings.ReplaceAll(normalized, "!", " ")
+	normalized = strings.ReplaceAll(normalized, ".", " ")
+	normalized = strings.ReplaceAll(normalized, "?", " ")
+
+	if strings.Contains(normalized, "серб") {
+		return messages.ReplyMessage(c, textcases.GetSerbMessage(), chatMsg.ThreadID())
+	}
+
 	// Победитель (не админ) может использовать только "предупреждение" и "извинись"
 	if isWinnerOnly {
 		switch text {
@@ -172,15 +181,6 @@ func handleAdminChatMessage(c tele.Context, chatMessageHandler *ChatMessageHandl
 				return handleNotEnoughRights(c, chatMessageHandler)
 			}
 		}
-	}
-
-	normalized := strings.ReplaceAll(text, ",", " ")
-	normalized = strings.ReplaceAll(normalized, "!", " ")
-	normalized = strings.ReplaceAll(normalized, ".", " ")
-	normalized = strings.ReplaceAll(normalized, "?", " ")
-
-	if strings.Contains(normalized, "серб") || strings.Contains(normalized, "серба") || strings.Contains(normalized, "сербу") || strings.Contains(normalized, "сербом") {
-		return messages.ReplyMessage(c, textcases.GetSerbMessage(), chatMsg.ThreadID())
 	}
 
 	// Если квиз запущен, обрабатываем ответы на квиз

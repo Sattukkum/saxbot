@@ -33,7 +33,7 @@ func handleUserChatMessage(c tele.Context, chatMessageHandler *ChatMessageHandle
 	normalized = strings.ReplaceAll(normalized, ".", " ")
 	normalized = strings.ReplaceAll(normalized, "?", " ")
 
-	if strings.Contains(normalized, "серб") || strings.Contains(normalized, "серба") || strings.Contains(normalized, "сербу") || strings.Contains(normalized, "сербом") {
+	if strings.Contains(normalized, "серб") {
 		return messages.ReplyMessage(c, textcases.GetSerbMessage(), chatMsg.ThreadID())
 	}
 
