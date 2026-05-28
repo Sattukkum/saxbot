@@ -147,6 +147,11 @@ func RemovePref(bot *tele.Bot, chat *tele.Chat, db *database.PostgresRepository)
 	if err != nil {
 		return fmt.Errorf("failed to get last quiz: %w", err)
 	}
+	if lastQuiz == nil {
+		log.Println("Завершённых квизов не найдено — вероятно новая или очищенная БД")
+		return nil
+	}
+
 	winnerID := lastQuiz.WinnerID
 	_, err = bot.Raw("setChatMemberTag", map[string]any{
 		"chat_id": chat.ID,

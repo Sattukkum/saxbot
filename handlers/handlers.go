@@ -418,11 +418,9 @@ func ManageRunningQuiz(c tele.Context, chatMessageHandler *ChatMessageHandler) {
 		chatMessageHandler.QuizManager.SetQuizAlreadyWas(true)
 		chatMessageHandler.Rep.SetQuizAlreadyWas()
 		var winnerTitle string
-		if c.Message().Sender.ID == chatMessageHandler.KatyaID {
-			winnerTitle = textcases.GetKatyasTitle()
-		} else {
-			winnerTitle = textcases.GetRandomTitle()
-		}
+
+		winnerTitle = textcases.GetRandomTitle()
+
 		audio, err := chatMessageHandler.Rep.GetAudioByName(todayQuiz.SongName)
 		if err != nil {
 			messages.ReplyMessage(c, fmt.Sprintf("Правильно! Песня: %s", todayQuiz.SongName), c.Message().ThreadID)

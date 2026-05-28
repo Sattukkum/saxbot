@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     container_name: saxbot-postgres
     restart: unless-stopped
     environment:
@@ -10,7 +10,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - saxbot-network
@@ -39,7 +39,7 @@ services:
       - ADMINS=${ADMINS}
       - ADMINS_USERNAMES=${ADMINS_USERNAMES}
       - MAIN_ADMIN_ID=${MAIN_ADMIN_ID}
-      - KATYA_ID=${KATYA_ID}
+      # - KATYA_ID=${KATYA_ID}
       - HOROSCOP_CHANNEL_LINK=${HOROSCOP_CHANNEL_LINK}
       - YANDEX_LINK=${YANDEX_LINK}
       - YOUTUBE_LINK=${YOUTUBE_LINK}
