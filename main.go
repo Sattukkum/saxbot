@@ -140,8 +140,8 @@ func main() {
 		QuizManager:     quizManager,
 		Rep:             rep,
 		Bot:             bot,
-		KatyaID:         mainEnv.KatyaID,
-		UserStates:      make(map[int64]string),
+		// KatyaID:         mainEnv.KatyaID,
+		UserStates: make(map[int64]string),
 	}
 
 	// Обработка текстовых сообщений

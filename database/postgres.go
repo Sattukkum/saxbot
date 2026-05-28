@@ -66,8 +66,13 @@ func AutoMigrate(db *gorm.DB) error {
 	log.Println("Starting database migration...")
 
 	// Удаляем FK на winner_id, если есть — в quizzes могут быть winner_id=0 или удалённые пользователи, из-за чего миграция падает
-	if err := db.Exec("ALTER TABLE quizzes DROP CONSTRAINT IF EXISTS fk_quizzes_winner").Error; err != nil {
-		return fmt.Errorf("failed to drop quizzes winner FK (if any): %w", err)
+	if db.Migrator().HasTable(&Quiz{}) {
+		if err := db.Exec(`
+			ALTER TABLE quizzes
+			DROP CONSTRAINT IF EXISTS fk_quizzes_winner
+		`).Error; err != nil {
+			return fmt.Errorf("failed to drop quizzes winner FK (if any): %w", err)
+		}
 	}
 
 	err := db.AutoMigrate(

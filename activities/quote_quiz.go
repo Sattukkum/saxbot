@@ -165,12 +165,16 @@ func ManageQuiz(rep *database.PostgresRepository, bot *tele.Bot, quizManager *Qu
 	var lastQuizDate time.Time
 	now := time.Now().In(moscowTZ)
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, moscowTZ)
+
 	lastQuiz, err := rep.GetLastCompletedQuiz()
 	if err != nil {
 		log.Printf("Не удалось загрузить данные последнего квиза")
 	}
 
-	if lastQuiz != nil {
+	if lastQuiz == nil {
+		log.Println("Завершённых квизов не найдено — вероятно новая или очищенная БД")
+		quizManager.SetIsLastQuizClip(false)
+	} else {
 		lastQuizDate = lastQuiz.Date.In(moscowTZ)
 		quizManager.SetIsLastQuizClip(lastQuiz.IsClip)
 		if !today.After(lastQuizDate) {
