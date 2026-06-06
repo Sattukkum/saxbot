@@ -3,7 +3,6 @@ package handlers
 import (
 	"fmt"
 	"saxbot/messages"
-	textcases "saxbot/text_cases"
 	"strings"
 
 	tele "gopkg.in/telebot.v4"
@@ -33,9 +32,9 @@ func handleUserChatMessage(c tele.Context, chatMessageHandler *ChatMessageHandle
 	normalized = strings.ReplaceAll(normalized, ".", " ")
 	normalized = strings.ReplaceAll(normalized, "?", " ")
 
-	if strings.Contains(normalized, "серб") {
-		return messages.ReplyMessage(c, textcases.GetSerbMessage(), chatMsg.ThreadID())
-	}
+	// if strings.Contains(normalized, "серб") {
+	// 	return messages.ReplyMessage(c, textcases.GetSerbMessage(), chatMsg.ThreadID())
+	// }
 
 	// Если квиз запущен, обрабатываем ответы на квиз
 	if chatMessageHandler.QuizManager.IsRunning() {

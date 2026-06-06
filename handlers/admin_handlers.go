@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"saxbot/admins"
 	"saxbot/messages"
-	textcases "saxbot/text_cases"
 	"strconv"
 	"strings"
 
@@ -34,9 +33,9 @@ func handleAdminChatMessage(c tele.Context, chatMessageHandler *ChatMessageHandl
 	normalized = strings.ReplaceAll(normalized, ".", " ")
 	normalized = strings.ReplaceAll(normalized, "?", " ")
 
-	if strings.Contains(normalized, "серб") {
-		return messages.ReplyMessage(c, textcases.GetSerbMessage(), chatMsg.ThreadID())
-	}
+	// if strings.Contains(normalized, "серб") {
+	// 	return messages.ReplyMessage(c, textcases.GetSerbMessage(), chatMsg.ThreadID())
+	// }
 
 	// Победитель (не админ) может использовать только "предупреждение" и "извинись"
 	if isWinnerOnly {
