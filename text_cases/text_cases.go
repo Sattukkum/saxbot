@@ -323,7 +323,7 @@ func GetAd(previousTheme int, r *rand.Rand) (imagePath string, caption string, c
 	const (
 		// количество картинок на каждую тему в папке images
 		admins  = 10
-		donate  = 6
+		donate  = 7
 		music   = 7
 		concert = 2
 	)
