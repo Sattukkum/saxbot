@@ -322,7 +322,7 @@ func GetAdminsCommand(user string, admins []string) string {
 func GetAd(previousTheme int, r *rand.Rand) (imagePath string, caption string, currentTheme int) {
 	const (
 		// количество картинок на каждую тему в папке images
-		admins  = 9
+		admins  = 8
 		donate  = 7
 		music   = 6
 		concert = 2
