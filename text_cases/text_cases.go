@@ -110,7 +110,6 @@ func GetInfo() string {
 <a href="%s">Поддержать автора</a>
 <a href="%s">Бустануть канал</a></b>
 
-Великий Новгород — Фэнтези Фест (конец июля). <b><a href="%s">Купить билет</a></b>
 Концерт в Москве — 19 сентября, клуб Live Stars. <b><a href="%s">Купить билет</a></b>
 
 Правила чатика:
@@ -127,7 +126,7 @@ func GetInfo() string {
 Со временем там появится ещё много классных функций, так что следи за обновлениями!
 
 Наслаждайся общением с нежитью!
-`, LinksData.YandexLink, LinksData.YoutubeLink, LinksData.VkLink, LinksData.DonateLink, LinksData.BoostLink, "https://fantasy-fest.ru/", LinksData.ConcertLink)
+`, LinksData.YandexLink, LinksData.YoutubeLink, LinksData.VkLink, LinksData.DonateLink, LinksData.BoostLink, LinksData.ConcertLink)
 }
 
 var SongQuotes = map[string]string{
@@ -334,7 +333,7 @@ func GetAd(previousTheme int, r *rand.Rand) (imagePath string, caption string, c
 		"admins":  "Товарищ! Веди себя в чате хорошо и уважительно относись к другим!\nПомни, что в случае несанкционированной рекламы или неприемлимого поведения несознательных элементов, ты всегда можешь позвать компетентные органы командой \"Админ\".",
 		"donate":  fmt.Sprintf("Товарищ! Если ты хочешь поддержать артиста, ты всегда можешь помочь выходу новых песен и музыкальных клипов своим рублем!\n<b><a href=\"%s\">Донат</a></b>", LinksData.DonateLink),
 		"music":   fmt.Sprintf("Товарищ! Не забывай, что ежедневные прослушивания песен и просмотр клипов укрепляют здоровье и приносят радость! Обязательно попробуй послушать песни, которые ещё не слышал!\n<b><a href=\"%s\">Слушать песни</a></b>\n<b><a href=\"%s\">Смотреть клипы</a></b>", LinksData.YandexLink, LinksData.YoutubeLink),
-		"concert": fmt.Sprintf("Товарищ! Следующий концерт — Великий Новгород — Фэнтези Фест (конец июля) — <b><a href=\"%s\">Купить билет</a></b>\n\nКонцерт в Москве — 19 сентября, клуб Live Stars! — <b><a href=\"%s\">Купить билет</a></b>", "https://fantasy-fest.ru/", LinksData.ConcertLink),
+		"concert": fmt.Sprintf("Товарищ! Следующий концерт в Москве — 19 сентября, клуб Live Stars! — <b><a href=\"%s\">Купить билет</a></b>", LinksData.ConcertLink),
 	}
 
 	// var captions = map[string]string{
