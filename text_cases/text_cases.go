@@ -360,15 +360,15 @@ func GetAd(previousTheme int, r *rand.Rand) (imagePath string, caption string, c
 		theme = "donate"
 	case 3:
 		theme = "music"
-	case 4:
-		theme = "concert"
+	// case 4:
+	// 	theme = "concert"
 	default:
 		log.Printf("Неожиданная тема! %d", previousTheme)
 		theme = "admins"
 	}
 
 	currentTheme = previousTheme + 1
-	if currentTheme > 4 {
+	if currentTheme > 3 {
 		currentTheme = 1
 	}
 
