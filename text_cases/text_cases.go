@@ -110,7 +110,7 @@ func GetInfo() string {
 <a href="%s">Поддержать автора</a>
 <a href="%s">Бустануть канал</a></b>
 
-Концерт в Москве — 19 сентября, клуб Live Stars. <b><a href="%s">Купить билет</a></b>
+Концерт в Москве 19 сентября отменен. Деньги за билеты вернутся в ближайшее время.
 
 Правила чатика:
 - не флудить
@@ -126,7 +126,7 @@ func GetInfo() string {
 Со временем там появится ещё много классных функций, так что следи за обновлениями!
 
 Наслаждайся общением с нежитью!
-`, LinksData.YandexLink, LinksData.YoutubeLink, LinksData.VkLink, LinksData.DonateLink, LinksData.BoostLink, LinksData.ConcertLink)
+`, LinksData.YandexLink, LinksData.YoutubeLink, LinksData.VkLink, LinksData.DonateLink, LinksData.BoostLink)
 }
 
 var SongQuotes = map[string]string{
