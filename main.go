@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math/rand"
 	"saxbot/activities"
 	"saxbot/admins"
 	"saxbot/database"
@@ -103,8 +102,8 @@ func main() {
 	time.Sleep(time.Second)
 
 	// Управление объявлениями
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	go activities.ManageAds(bot, r, quizManager, postGate, postDone)
+	// r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	// go activities.ManageAds(bot, r, quizManager, postGate, postDone)
 
 	// Управление поздравлениями
 	go activities.ManageCongratulations(bot, rep, quizManager, postGate, postDone)

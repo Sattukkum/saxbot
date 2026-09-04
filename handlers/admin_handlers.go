@@ -195,6 +195,7 @@ func handleAdminPrivateMessage(c tele.Context, chatMessageHandler *ChatMessageHa
 	if chatMsg == nil {
 		return fmt.Errorf("chat message is nil")
 	}
+
 	text := strings.ToLower(chatMsg.Text())
 	userID := chatMsg.UserData().UserID
 

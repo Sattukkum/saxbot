@@ -106,7 +106,7 @@ func HandlePrivateMessage(c tele.Context, chatMessageHandler *ChatMessageHandler
 	// Определяем, является ли отправитель админом или победителем
 	isAdmin := chatMessageHandler.Rep.IsAdmin(userData.UserID)
 	isWinnerOnly := chatMessage.IsWinner() && !isAdmin && !chatMessage.ChatAdmin()
-	canUseAdminCommands := isAdmin || chatMessage.IsWinner() || chatMessage.ChatAdmin()
+	canUseAdminCommands := isAdmin || chatMessage.ChatAdmin()
 
 	if canUseAdminCommands {
 		return handleAdminPrivateMessage(c, chatMessageHandler, isWinnerOnly)

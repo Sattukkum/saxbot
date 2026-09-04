@@ -97,6 +97,10 @@ func (qm *QuizManager) Winner() int64 {
 // Используем московское время (UTC+3)
 var MoscowTZ = time.FixedZone("Moscow", 3*60*60)
 
+// Временно отключает квизы по кадрам из клипов.
+// Чтобы вернуть их, достаточно установить значение в true.
+const clipQuizzesEnabled = false
+
 func estimateQuizTime() time.Time {
 	now := time.Now().In(MoscowTZ)
 
@@ -110,7 +114,7 @@ func estimateQuizTime() time.Time {
 }
 
 func getTodayQuiz(isLastQuizClip bool) QuoteQuiz {
-	if isLastQuizClip {
+	if !clipQuizzesEnabled || isLastQuizClip {
 		quote, songName := textcases.GetRandomQuote()
 		quizTime := estimateQuizTime()
 
