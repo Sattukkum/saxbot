@@ -153,6 +153,21 @@ func main() {
 
 	// Обработка событий присоединения пользователей к чату
 	bot.Handle(tele.OnUserJoined, func(c tele.Context) error {
+		if c.Message().UserJoined.ID == mainEnv.MainAdminID {
+			_ = bot.Promote(c.Chat(), &tele.ChatMember{
+				User: c.Message().UserJoined,
+				Rights: tele.Rights{
+					CanChangeInfo:      true,
+					CanDeleteMessages:  true,
+					CanInviteUsers:     true,
+					CanRestrictMembers: true,
+					CanPinMessages:     true,
+					CanPromoteMembers:  true,
+				},
+			})
+			_ = bot.SetAdminTitle(c.Chat(), c.Message().UserJoined, "КПСС фембойчик")
+			return c.Reply("Приветствую создателя!")
+		}
 		return handlers.HandleUserJoined(c, &chatMessageHandler)
 	})
 
