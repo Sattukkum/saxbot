@@ -233,6 +233,24 @@ func handleAdminPrivateMessage(c tele.Context, chatMessageHandler *ChatMessageHa
 		return handlePromoteAdmin(c, chatMessageHandler)
 	}
 
+	if strings.HasPrefix(text, "забанить") {
+		parts := strings.Split(text, " ")
+		if len(parts) != 2 {
+			return c.Send("Неверный формат команды. Используй \"забанить [id]\"")
+		}
+		userID, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil {
+			return c.Send("Неверный формат ID. Используй числовой ID")
+		}
+		chat := &tele.Chat{ID: chatMessageHandler.QuizManager.QuizChatID}
+		chatMember := &tele.ChatMember{User: &tele.User{ID: userID}}
+		err = chatMessageHandler.Bot.Ban(chat, chatMember)
+		if err != nil {
+			return c.Send(fmt.Sprintf("Ошибка: %v", err))
+		}
+		return c.Send(fmt.Sprintf("Забанил пользователя %d", userID))
+	}
+
 	// Проверка на формат даты рождения (DD.MM.YYYY)
 	if chatMessageHandler.GetUserState(userID) == "set_birthday" {
 		if isBirthdayFormat(chatMsg.Text()) {
