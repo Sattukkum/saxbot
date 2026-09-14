@@ -342,7 +342,7 @@ func handleDecapitate(c tele.Context, chatMessageHandler *ChatMessageHandler) er
 		return fmt.Errorf("chat message is nil")
 	}
 	if !chatMsg.IsReply() {
-		return messages.ReplyMessage(c, "Пироман готов!", chatMsg.ThreadID())
+		return messages.ReplyMessage(c, "Кого убрать?", chatMsg.ThreadID())
 	}
 
 	if chatMsg.ReplyToAdmin() {
@@ -357,14 +357,12 @@ func handleDecapitate(c tele.Context, chatMessageHandler *ChatMessageHandler) er
 		if err != nil {
 			return fmt.Errorf("failed to get channel data for channel %d: %w", channelID, err)
 		}
-		messages.ReplyToOriginalMessage(c, "ОБЕЗГЛАВИТЬ ОБОССАТЬ И СЖЕЧЬ!!!", chatMsg.ThreadID())
-		time.Sleep(1 * time.Second)
 		channelData.Status = "banned"
 		if err := chatMessageHandler.Rep.SaveChannel(&channelData); err != nil {
 			return fmt.Errorf("failed to ban channel %d: %w", channelID, err)
 		}
 		chatMessageHandler.Bot.Delete(chatMsg.ReplyTo())
-		return messages.ReplyMessage(c, fmt.Sprintf("%s идет нахуй из чатика. АВЕ АВЕ ПИРОМАН!", chatMsg.ReplyToAppeal()), chatMsg.ThreadID())
+		return messages.ReplyMessage(c, fmt.Sprintf("Мертвый панк выгоняет %s из чатика. Жалким позерам тут не место!", chatMsg.ReplyToAppeal()), chatMsg.ThreadID())
 	}
 
 	// Обработка бана пользователя
@@ -374,12 +372,10 @@ func handleDecapitate(c tele.Context, chatMessageHandler *ChatMessageHandler) er
 	}
 
 	user := replyTo.Sender
-	messages.ReplyToOriginalMessage(c, "ОБЕЗГЛАВИТЬ ОБОССАТЬ И СЖЕЧЬ!!!", chatMsg.ThreadID())
-	time.Sleep(1 * time.Second)
 	chatMember := &tele.ChatMember{User: user, Role: tele.Member}
 	admins.BanUser(chatMessageHandler.Bot, c.Message().Chat, chatMember, chatMessageHandler.Rep)
 	chatMessageHandler.Bot.Delete(replyTo)
-	return messages.ReplyMessage(c, fmt.Sprintf("%s идет нахуй из чатика. АВЕ АВЕ ПИРОМАН!", chatMsg.ReplyToAppeal()), chatMsg.ThreadID())
+	return messages.ReplyMessage(c, fmt.Sprintf("Мертвый панк выгоняет %s из чатика. Жалким позерам тут не место!", chatMsg.ReplyToAppeal()), chatMsg.ThreadID())
 }
 
 func handleInfo(c tele.Context, chatMessageHandler *ChatMessageHandler) error {
