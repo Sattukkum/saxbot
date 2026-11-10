@@ -5,6 +5,7 @@ import (
 	"log"
 	"math/rand"
 	"saxbot/database"
+	"saxbot/telegram"
 	textcases "saxbot/text_cases"
 	"time"
 
@@ -31,6 +32,18 @@ func ManageCongratulations(bot *tele.Bot, rep *database.PostgresRepository, m *Q
 			log.Printf("failed to get users with birthday today: %v", err)
 			continue
 		}
+		chatUsers := make([]database.User, 0, len(users))
+		for _, user := range users {
+			isMember, err := telegram.IsChatMember(bot, m.QuizChatID, user.UserID)
+			if err != nil {
+				log.Printf("failed to check birthday user %d membership in chat %d: %v", user.UserID, m.QuizChatID, err)
+				continue
+			}
+			if isMember {
+				chatUsers = append(chatUsers, user)
+			}
+		}
+		users = chatUsers
 		var message string
 		if len(users) == 1 {
 			message = textcases.GetCongratulationsMessage(true)
